@@ -1,0 +1,42 @@
+rules_version = '2';
+
+// Regole di sicurezza dei dati di Nazifoski Preventivi.
+// Possono leggere e scrivere solo:
+//  - il titolare (impresaedilenazifoski@gmail.com);
+//  - le persone la cui email (verificata) è nell'elenco accesso/persone, che solo il titolare può modificare.
+// Incollare questo testo in Firebase → Firestore Database → Regole → Pubblica.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function verified() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner() {
+      return verified() && request.auth.token.email.lower() == 'impresaedilenazifoski@gmail.com';
+    }
+
+    function isAllowed() {
+      return isOwner() || (
+        verified()
+        && exists(/databases/$(database)/documents/accesso/persone)
+        && request.auth.token.email.lower() in get(/databases/$(database)/documents/accesso/persone).data.emails
+      );
+    }
+
+    match /accesso/persone {
+      allow read: if isAllowed();
+      allow write: if isOwner()
+        && request.resource.data.keys().hasOnly(['emails'])
+        && request.resource.data.emails is list
+        && request.resource.data.emails.size() <= 50;
+    }
+
+    match /preventivi/{id} { allow read, write: if isAllowed(); }
+    match /listino/{id}    { allow read, write: if isAllowed(); }
+    match /clienti/{id}    { allow read, write: if isAllowed(); }
+    match /impostazioni/{id} { allow read, write: if isAllowed(); }
+
+    // Tutto il resto è chiuso.
+  }
+}

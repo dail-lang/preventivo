@@ -1,0 +1,506 @@
+{
+ "acorpo": {
+  "anno": 2026,
+  "data": "2026-02-12",
+  "stato": "bozza",
+  "esempio": false,
+  "cantiere": "",
+  "validita": 30,
+  "tempi": "",
+  "pagamento": "",
+  "note": "",
+  "iva": 10,
+  "dettaglio": "voci",
+  "sconto": {
+   "tipo": "%",
+   "valore": ""
+  },
+  "id": "acorpo",
+  "numero": 7,
+  "oggetto": "Lavori di ristrutturazione del bagno",
+  "cliente": {
+   "nome": "Cliente di prova",
+   "indirizzo": "",
+   "cfpiva": "",
+   "telefono": "",
+   "email": ""
+  },
+  "sezioni": [
+   {
+    "id": "s1",
+    "titolo": "Ristrutturazione bagno",
+    "voci": [
+     {
+      "id": "v1",
+      "desc": "Ristrutturazione bagno comprensiva di demolizione e smaltimento dei materiali di risulta, realizzazione parete in cartongesso, rifacimento massetto, assistenza a idraulico, elettricista e plastichino, posa pavimento e finiture finali.\nI materiali necessari (pavimenti, collanti, stucchi, ecc.) saranno forniti dal Cliente.",
+      "um": "a corpo",
+      "qta": "",
+      "prezzo": "4273"
+     }
+    ]
+   }
+  ]
+ },
+ "appartamento": {
+  "anno": 2026,
+  "data": "2026-02-12",
+  "stato": "bozza",
+  "esempio": false,
+  "cantiere": "Via del cantiere 5, Riccione (RN)",
+  "validita": 30,
+  "tempi": "Circa 8 settimane dall'inizio dei lavori.",
+  "pagamento": "",
+  "note": "Sono esclusi i lavori non indicati.",
+  "iva": 10,
+  "dettaglio": "voci",
+  "sconto": {
+   "tipo": "%",
+   "valore": "5"
+  },
+  "id": "appartamento",
+  "numero": 8,
+  "oggetto": "Ristrutturazione completa appartamento",
+  "cliente": {
+   "nome": "Cliente appartamento",
+   "indirizzo": "Via di prova 2, Rimini (RN)",
+   "cfpiva": "",
+   "telefono": "",
+   "email": ""
+  },
+  "sezioni": [
+   {
+    "id": "s0",
+    "titolo": "Demolizioni e rimozioni",
+    "voci": [
+     {
+      "id": "v1",
+      "desc": "Demolizione di pavimenti in ceramica compreso sottofondo",
+      "um": "mq",
+      "qta": "62",
+      "prezzo": "18"
+     },
+     {
+      "id": "v2",
+      "desc": "Rimozione rivestimenti di bagno e cucina",
+      "um": "mq",
+      "qta": "38",
+      "prezzo": "14"
+     },
+     {
+      "id": "v3",
+      "desc": "Demolizione tramezzi in laterizio",
+      "um": "mq",
+      "qta": "12",
+      "prezzo": "25"
+     },
+     {
+      "id": "v4",
+      "desc": "Rimozione porte interne e infissi",
+      "um": "cad",
+      "qta": "7",
+      "prezzo": "35"
+     }
+    ]
+   },
+   {
+    "id": "s1",
+    "titolo": "Impianto idraulico",
+    "voci": [
+     {
+      "id": "v5",
+      "desc": "Rifacimento impianto idraulico bagno",
+      "um": "a corpo",
+      "qta": "1",
+      "prezzo": "2200"
+     },
+     {
+      "id": "v6",
+      "desc": "Rifacimento impianto idraulico cucina",
+      "um": "a corpo",
+      "qta": "1",
+      "prezzo": "950"
+     },
+     {
+      "id": "v7",
+      "desc": "Punti acqua aggiuntivi",
+      "um": "cad",
+      "qta": "3",
+      "prezzo": "120"
+     }
+    ]
+   },
+   {
+    "id": "s2",
+    "titolo": "Impianto elettrico",
+    "voci": [
+     {
+      "id": "v8",
+      "desc": "Rifacimento impianto elettrico appartamento, quadro e linee",
+      "um": "a corpo",
+      "qta": "1",
+      "prezzo": "4800"
+     },
+     {
+      "id": "v9",
+      "desc": "Punti luce e prese sottotraccia",
+      "um": "cad",
+      "qta": "38",
+      "prezzo": "65"
+     }
+    ]
+   },
+   {
+    "id": "s3",
+    "titolo": "Massetti e pavimenti",
+    "voci": [
+     {
+      "id": "v10",
+      "desc": "Massetto sabbia-cemento sp. medio 5 cm",
+      "um": "mq",
+      "qta": "62",
+      "prezzo": "22"
+     },
+     {
+      "id": "v11",
+      "desc": "Posa pavimento gres porcellanato 60×60",
+      "um": "mq",
+      "qta": "62",
+      "prezzo": "32"
+     },
+     {
+      "id": "v12",
+      "desc": "Battiscopa in gres, fornitura e posa",
+      "um": "ml",
+      "qta": "74",
+      "prezzo": "12"
+     }
+    ]
+   },
+   {
+    "id": "s4",
+    "titolo": "Bagno",
+    "voci": [
+     {
+      "id": "v13",
+      "desc": "Impermeabilizzazione zona doccia",
+      "um": "mq",
+      "qta": "3,2",
+      "prezzo": "28"
+     },
+     {
+      "id": "v14",
+      "desc": "Posa rivestimento ceramico a parete h 2,20",
+      "um": "mq",
+      "qta": "21",
+      "prezzo": "38"
+     },
+     {
+      "id": "v15",
+      "desc": "Piatto doccia filo pavimento 80×140",
+      "um": "cad",
+      "qta": "1",
+      "prezzo": "520"
+     },
+     {
+      "id": "v16",
+      "desc": "Montaggio sanitari sospesi con cassette a incasso",
+      "um": "cad",
+      "qta": "2",
+      "prezzo": "350"
+     }
+    ]
+   },
+   {
+    "id": "s5",
+    "titolo": "Cartongesso",
+    "voci": [
+     {
+      "id": "v17",
+      "desc": "Controsoffitto in cartongesso corridoio e bagno",
+      "um": "mq",
+      "qta": "14",
+      "prezzo": "38"
+     },
+     {
+      "id": "v18",
+      "desc": "Veletta con strip LED soggiorno",
+      "um": "ml",
+      "qta": "6",
+      "prezzo": "55"
+     }
+    ]
+   },
+   {
+    "id": "s6",
+    "titolo": "Tinteggiatura",
+    "voci": [
+     {
+      "id": "v19",
+      "desc": "Rasatura completa delle pareti",
+      "um": "mq",
+      "qta": "210",
+      "prezzo": "16"
+     },
+     {
+      "id": "v20",
+      "desc": "Tinteggiatura pareti e soffitti, due mani",
+      "um": "mq",
+      "qta": "260",
+      "prezzo": "8"
+     }
+    ]
+   },
+   {
+    "id": "s7",
+    "titolo": "Smaltimento e pulizia",
+    "voci": [
+     {
+      "id": "v21",
+      "desc": "Smaltimento macerie in discarica autorizzata",
+      "um": "a corpo",
+      "qta": "",
+      "prezzo": "650"
+     },
+     {
+      "id": "v22",
+      "desc": "Pulizia finale del cantiere",
+      "um": "a corpo",
+      "qta": "",
+      "prezzo": "300"
+     }
+    ]
+   }
+  ]
+ },
+ "totale": {
+  "anno": 2026,
+  "data": "2026-02-12",
+  "stato": "bozza",
+  "esempio": false,
+  "cantiere": "Via del cantiere 5, Riccione (RN)",
+  "validita": 30,
+  "tempi": "Circa 8 settimane dall'inizio dei lavori.",
+  "pagamento": "",
+  "note": "Sono esclusi i lavori non indicati.",
+  "iva": 10,
+  "dettaglio": "totale",
+  "sconto": {
+   "tipo": "%",
+   "valore": "5"
+  },
+  "id": "totale",
+  "numero": 9,
+  "oggetto": "Ristrutturazione completa appartamento",
+  "cliente": {
+   "nome": "Cliente appartamento",
+   "indirizzo": "Via di prova 2, Rimini (RN)",
+   "cfpiva": "",
+   "telefono": "",
+   "email": ""
+  },
+  "sezioni": [
+   {
+    "id": "s0",
+    "titolo": "Demolizioni e rimozioni",
+    "voci": [
+     {
+      "id": "v1",
+      "desc": "Demolizione di pavimenti in ceramica compreso sottofondo",
+      "um": "mq",
+      "qta": "62",
+      "prezzo": "18"
+     },
+     {
+      "id": "v2",
+      "desc": "Rimozione rivestimenti di bagno e cucina",
+      "um": "mq",
+      "qta": "38",
+      "prezzo": "14"
+     },
+     {
+      "id": "v3",
+      "desc": "Demolizione tramezzi in laterizio",
+      "um": "mq",
+      "qta": "12",
+      "prezzo": "25"
+     },
+     {
+      "id": "v4",
+      "desc": "Rimozione porte interne e infissi",
+      "um": "cad",
+      "qta": "7",
+      "prezzo": "35"
+     }
+    ]
+   },
+   {
+    "id": "s1",
+    "titolo": "Impianto idraulico",
+    "voci": [
+     {
+      "id": "v5",
+      "desc": "Rifacimento impianto idraulico bagno",
+      "um": "a corpo",
+      "qta": "1",
+      "prezzo": "2200"
+     },
+     {
+      "id": "v6",
+      "desc": "Rifacimento impianto idraulico cucina",
+      "um": "a corpo",
+      "qta": "1",
+      "prezzo": "950"
+     },
+     {
+      "id": "v7",
+      "desc": "Punti acqua aggiuntivi",
+      "um": "cad",
+      "qta": "3",
+      "prezzo": "120"
+     }
+    ]
+   },
+   {
+    "id": "s2",
+    "titolo": "Impianto elettrico",
+    "voci": [
+     {
+      "id": "v8",
+      "desc": "Rifacimento impianto elettrico appartamento, quadro e linee",
+      "um": "a corpo",
+      "qta": "1",
+      "prezzo": "4800"
+     },
+     {
+      "id": "v9",
+      "desc": "Punti luce e prese sottotraccia",
+      "um": "cad",
+      "qta": "38",
+      "prezzo": "65"
+     }
+    ]
+   },
+   {
+    "id": "s3",
+    "titolo": "Massetti e pavimenti",
+    "voci": [
+     {
+      "id": "v10",
+      "desc": "Massetto sabbia-cemento sp. medio 5 cm",
+      "um": "mq",
+      "qta": "62",
+      "prezzo": "22"
+     },
+     {
+      "id": "v11",
+      "desc": "Posa pavimento gres porcellanato 60×60",
+      "um": "mq",
+      "qta": "62",
+      "prezzo": "32"
+     },
+     {
+      "id": "v12",
+      "desc": "Battiscopa in gres, fornitura e posa",
+      "um": "ml",
+      "qta": "74",
+      "prezzo": "12"
+     }
+    ]
+   },
+   {
+    "id": "s4",
+    "titolo": "Bagno",
+    "voci": [
+     {
+      "id": "v13",
+      "desc": "Impermeabilizzazione zona doccia",
+      "um": "mq",
+      "qta": "3,2",
+      "prezzo": "28"
+     },
+     {
+      "id": "v14",
+      "desc": "Posa rivestimento ceramico a parete h 2,20",
+      "um": "mq",
+      "qta": "21",
+      "prezzo": "38"
+     },
+     {
+      "id": "v15",
+      "desc": "Piatto doccia filo pavimento 80×140",
+      "um": "cad",
+      "qta": "1",
+      "prezzo": "520"
+     },
+     {
+      "id": "v16",
+      "desc": "Montaggio sanitari sospesi con cassette a incasso",
+      "um": "cad",
+      "qta": "2",
+      "prezzo": "350"
+     }
+    ]
+   },
+   {
+    "id": "s5",
+    "titolo": "Cartongesso",
+    "voci": [
+     {
+      "id": "v17",
+      "desc": "Controsoffitto in cartongesso corridoio e bagno",
+      "um": "mq",
+      "qta": "14",
+      "prezzo": "38"
+     },
+     {
+      "id": "v18",
+      "desc": "Veletta con strip LED soggiorno",
+      "um": "ml",
+      "qta": "6",
+      "prezzo": "55"
+     }
+    ]
+   },
+   {
+    "id": "s6",
+    "titolo": "Tinteggiatura",
+    "voci": [
+     {
+      "id": "v19",
+      "desc": "Rasatura completa delle pareti",
+      "um": "mq",
+      "qta": "210",
+      "prezzo": "16"
+     },
+     {
+      "id": "v20",
+      "desc": "Tinteggiatura pareti e soffitti, due mani",
+      "um": "mq",
+      "qta": "260",
+      "prezzo": "8"
+     }
+    ]
+   },
+   {
+    "id": "s7",
+    "titolo": "Smaltimento e pulizia",
+    "voci": [
+     {
+      "id": "v21",
+      "desc": "Smaltimento macerie in discarica autorizzata",
+      "um": "a corpo",
+      "qta": "",
+      "prezzo": "650"
+     },
+     {
+      "id": "v22",
+      "desc": "Pulizia finale del cantiere",
+      "um": "a corpo",
+      "qta": "",
+      "prezzo": "300"
+     }
+    ]
+   }
+  ]
+ }
+}
