@@ -138,6 +138,37 @@ async function login(page, email, pw) {
   const dbs = await pc.page.evaluate(async () => (await indexedDB.databases()).map(d => d.name).filter(n => /firestore/i.test(n || '')));
   check('esci: niente dati salvati nel browser', dbs.length === 0, JSON.stringify(dbs));
 
+
+  // Dati creati «solo su questo telefono» e poi trasferiti online dopo il collegamento a Firebase
+  {
+    const ctx = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' });
+    await ctx.route('https://www.gstatic.com/firebasejs/**', r => r.fulfill({ path: path.join(FB, path.basename(new URL(r.request().url()).pathname)), contentType: 'text/javascript' }));
+    const page = await ctx.newPage();
+    const errs = []; page.on('pageerror', e => errs.push(e.message));
+    await page.goto(base + 'index.html');
+    await page.waitForSelector('[data-act="new"]', { timeout: 15000 });
+    await page.click('[data-act="new"]');
+    await page.fill('#f-cnome', 'Cliente dal telefono locale');
+    await page.fill('#sezioni textarea', 'Rasatura');
+    await page.fill('#sezioni [data-v="qta"]', '5');
+    await page.fill('#sezioni [data-v="prezzo"]', '16');
+    await page.waitForTimeout(900);
+    await page.click('[data-act="back"]');
+    await page.waitForTimeout(500);
+    await page.goto(base + 'index.html?emu=127.0.0.1');
+    await login(page, 'impresaedilenazifoski@gmail.com', 'segreto123');
+    await page.waitForSelector('#trasferisci', { timeout: 15000 }).catch(() => {});
+    check('trasferimento: dopo l\'accesso propone di trasferire i dati del telefono', await page.isVisible('#trasferisci'));
+    await page.click('[data-act="trasferisci"]').catch(() => {});
+    await tel.page.waitForSelector('text=Cliente dal telefono locale', { timeout: 15000 }).catch(() => {});
+    check('trasferimento: il preventivo arriva sugli altri dispositivi', await tel.page.isVisible('text=Cliente dal telefono locale'));
+    await page.reload();
+    await page.waitForSelector('[data-open]', { timeout: 15000 }).catch(() => {});
+    check('trasferimento: l\'avviso non ricompare', !(await page.isVisible('#trasferisci')));
+    check('trasferimento: nessun errore', errs.length === 0, errs.join(' | '));
+    await ctx.close();
+  }
+
   // Nuovo account con email da confermare
   const nuovo = await device(browser, base, 'Pixel 7');
   await nuovo.page.waitForSelector('#l-mode');

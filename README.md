@@ -34,6 +34,7 @@ npm run test:rules         # regole di sicurezza con l'emulatore Firestore (serv
 node tests/ui.spec.cjs     # interfaccia su telefono simulato (Playwright + Chromium)
 node tests/pdf-check.cjs   # contenuto e impaginazione del PDF (serve poppler-utils)
 node tests/pwa.spec.cjs    # manifest, icone, uso senza rete, aggiornamenti, invito all'installazione
+node tests/locale.spec.cjs # modalità «solo su questo telefono» (senza Firebase)
 npm run test:e2e           # prova completa con gli emulatori Auth + Firestore (accesso, sincronizzazione, offline, uscita)
 ```
 

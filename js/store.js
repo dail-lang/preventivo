@@ -10,10 +10,11 @@ export const FB_URL = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/`;
 export const COLLEZIONI = ['preventivi', 'listino', 'clienti'];
 
 export async function createStore(kind, opts = {}) {
+  if (kind === 'locale') return localStore();
   return kind === 'firestore' ? firestoreStore(opts.app, opts.emulator) : memoryStore(opts.seed || {}, !!opts.deny);
 }
 
-function memoryStore(seed, deny) {
+function memoryStore(seed, deny, persist) {
   const denied = { code: 'permission-denied', message: 'Missing or insufficient permissions.' };
   const data = {};
   const subs = {};
@@ -39,11 +40,13 @@ function memoryStore(seed, deny) {
       cb(d ? structuredClone(d) : null);
       return () => docSubs[path].delete(cb);
     },
-    async save(c, id, d) { const { id: _ignored, ...rest } = d; coll(c).set(id, structuredClone(rest)); emit(c); },
-    async remove(c, id) { coll(c).delete(id); emit(c); },
+    async save(c, id, d) { const { id: _ignored, ...rest } = d; coll(c).set(id, structuredClone(rest)); emit(c); if (persist) await persist.put(c, id, rest); },
+    async remove(c, id) { coll(c).delete(id); emit(c); if (persist) await persist.del(c, id); },
     async ids(c) { return [...coll(c).keys()]; },
     onSync(cb) { syncSubs.add(cb); cb({ online: true, pending: false }); return () => syncSubs.delete(cb); },
     async clearLocal() {},
+    exportAll() { return esporta(c => list(c)); },
+    hasData() { return ['preventivi', 'listino', 'clienti'].some(c => coll(c).size > 0); },
     peek(c, id) { return coll(c).get(id); }
   };
 }
@@ -78,6 +81,51 @@ async function firestoreStore(app, emulator) {
     onSync(cb) { syncSubs.add(cb); cb(state()); return () => syncSubs.delete(cb); },
     /** Cancella la copia dei dati salvata nel browser (dopo «Esci»). Poi la pagina va ricaricata. */
     async clearLocal() { await fs.terminate(db); await fs.clearIndexedDbPersistence(db); }
+  };
+}
+
+/** Dati nel dispositivo (IndexedDB): usata finché Firebase non è configurato. */
+const IDB_NAME = 'nazifoski-locale';
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('docs', { keyPath: 'path' });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+const tx = (db, mode, fn) => new Promise((res, rej) => {
+  const t = db.transaction('docs', mode); const out = fn(t.objectStore('docs'));
+  t.oncomplete = () => res(out && 'result' in out ? out.result : undefined); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+});
+export async function localStore() {
+  const db = await idb();
+  const rows = await tx(db, 'readonly', s => s.getAll());
+  const seed = {};
+  for (const r of rows || []) (seed[r.coll] = seed[r.coll] || []).push({ ...r.data, id: r.id });
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  const st = memoryStore(seed, false, {
+    put: (c, id, d) => tx(db, 'readwrite', s => s.put({ path: c + '/' + id, coll: c, id, data: structuredClone(d) })),
+    del: (c, id) => tx(db, 'readwrite', s => s.delete(c + '/' + id))
+  });
+  st.kind = 'locale';
+  return st;
+}
+/** C'è un archivio «solo su questo telefono» con dati? (senza crearlo se non esiste) */
+export async function localeHasData() {
+  try {
+    if (indexedDB.databases) { const list = await indexedDB.databases(); if (!list.some(d => d.name === IDB_NAME)) return false; }
+    const st = await localStore(); return st.hasData() ? st : false;
+  } catch (e) { return false; }
+}
+
+function esporta(list) {
+  const az = list('impostazioni').find(x => x.id === 'azienda');
+  const strip = r => { const { id, ...rest } = r; return { id, ...rest }; };
+  return {
+    formato: 'nazifoski-dati', esportato: new Date().toISOString(),
+    preventivi: list('preventivi').map(strip), listino: list('listino').map(strip), clienti: list('clienti').map(strip),
+    ...(az ? { azienda: (({ id, ...rest }) => rest)(az) } : {})
   };
 }
 

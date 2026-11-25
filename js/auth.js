@@ -12,6 +12,10 @@ export const isIosStandalone = () =>
   /iphone|ipad|ipod/i.test(navigator.userAgent) && (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches);
 
 export async function createAuth(kind, opts = {}) {
+  if (kind === 'locale') {
+    const user = { email: null, verified: true, isOwner: false, locale: true, provider: 'locale' };
+    return { kind: 'locale', onUser(cb) { cb(user); return () => {}; }, async signOut() {}, async reload() { return user; } };
+  }
   return kind === 'firebase' ? firebaseAuth(opts.app, opts.emulator) : fakeAuth(opts.user);
 }
 

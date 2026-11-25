@@ -1,5 +1,10 @@
 # Nazifoski Preventivi — istruzioni
 
+> **Si può usare subito.** Finché il passo 1 (Firebase) non è fatto, l'app funziona in modalità
+> **«solo su questo telefono»**: niente accesso, i dati restano sul dispositivo. Fai spesso
+> *Impostazioni → Esporta copia di sicurezza*. Quando colleghi Firebase e accedi, l'app propone
+> **«Trasferiscili online»** e porta tutto nell'archivio condiviso.
+
 Da fare una volta sola, in tutto circa 15–20 minuti. Serve un computer (va bene anche il telefono, ma è più comodo
 il computer) e l'account Google **impresaedilenazifoski@gmail.com**.
 
@@ -76,7 +81,7 @@ L'accesso si fa una volta per dispositivo. L'app funziona anche senza rete: le m
 
 | Cosa succede | Cosa fare |
 |---|---|
-| «Configurazione da completare» | Manca il passo 1.5: manda a Claude il blocco `firebaseConfig`. |
+| In alto c'è scritto «Dati solo su questo telefono» | Firebase non è ancora collegato (passo 1): i dati sono solo su quel dispositivo. |
 | «Questo indirizzo non è ancora autorizzato in Firebase» | Passo 1.4: aggiungi `dail-lang.github.io` ai domini autorizzati. |
 | «Accesso in attesa» | La tua email non è in Persone autorizzate (passo 5), oppure non l'hai confermata. |
 | «Esiste già un account con questa email» | Hai già usato Google con quella email: accedi con Google, oppure tocca «Password dimenticata?» per impostare una password. |

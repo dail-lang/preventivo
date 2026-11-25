@@ -1,6 +1,6 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
 import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2 } from './calc.js';
-import { createStore, importa, FB_URL } from './store.js';
+import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { firebaseConfig } from '../firebase-config.js';
 
@@ -82,11 +82,6 @@ function showScreen(id, html) {
 }
 function showApp() { $('#boot').hidden = true; $('#screen').hidden = true; $('#screen').innerHTML = ''; $('#app').hidden = false; }
 
-function showSetup() {
-  showScreen('setup', `<h1>Configurazione da completare</h1>
-    <p>L'app è pronta ma non è ancora collegata all'archivio dei dati. Segui il passo 1 di ISTRUZIONI.md (progetto Firebase) e incolla la configurazione in <code>firebase-config.js</code>.</p>`);
-}
-
 function showLogin(mode = 'accedi', note = '') {
   const ios = isIosStandalone();
   const google = `<button class="btn block gbtn" type="button" id="l-google">${IC.google} Accedi con Google</button>`;
@@ -161,12 +156,15 @@ async function boot() {
   try {
     if (!TEST) {
       const config = EMU ? EMU_CONFIG : firebaseConfig;
-      if (!config) return showSetup();
-      const { initializeApp } = await import(FB_URL + 'firebase-app.js');
-      app = initializeApp(config);
+      if (config) {
+        const { initializeApp } = await import(FB_URL + 'firebase-app.js');
+        app = initializeApp(config);
+      }
     }
-    auth = await createAuth(TEST ? 'fake' : 'firebase', { app, user: seed.user, emulator: EMU });
-    store = await createStore(TEST ? 'memory' : 'firestore', { app, emulator: EMU, deny: !!seed.deny, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni } });
+    // Senza configurazione Firebase: dati «solo su questo telefono», senza accesso.
+    const kind = TEST ? 'test' : app ? 'online' : 'locale';
+    auth = await createAuth(kind === 'test' ? 'fake' : kind === 'online' ? 'firebase' : 'locale', { app, user: seed.user, emulator: EMU });
+    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni } });
     store.onSync(s => { S.sync = s; renderSync(); });
     auth.onUser(onUser);
   } catch (e) {
@@ -204,7 +202,33 @@ function startData() {
   }, dataError));
 }
 
+let localeDaTrasferire = null;
+async function controllaLocale() {
+  if (TEST || !S.user || S.user.locale) return;
+  try { if (localStorage.getItem('nz-locale-trasferito') === '1') return; } catch (e) {}
+  const loc = await localeHasData();
+  if (!loc) return;
+  localeDaTrasferire = loc;
+  if (S.view === 'lista') renderLista(true);
+}
+async function trasferisciLocale() {
+  if (!localeDaTrasferire) return;
+  try {
+    const r = await importa(store, localeDaTrasferire.exportAll());
+    try { localStorage.setItem('nz-locale-trasferito', '1'); } catch (e) {}
+    localeDaTrasferire = null;
+    renderLista(true);
+    toast(r.creati ? `Trasferiti ${r.creati} elementi nell'archivio online` : 'Era già tutto online');
+  } catch (e) { toast('Trasferimento non riuscito. Riprova.'); }
+}
+function trasferimentoBanner() {
+  if (!localeDaTrasferire) return '';
+  const d = localeDaTrasferire.exportAll();
+  return `<div class="note" id="trasferisci"><span>Su questo telefono ci sono dati salvati prima del collegamento online: ${d.preventivi.length} preventivi, ${d.listino.length} voci di listino, ${d.clienti.length} clienti.</span><button class="btn primary" type="button" data-act="trasferisci">Trasferiscili online</button></div>`;
+}
+
 function startCollections() {
+  controllaLocale();
   for (const name of ['preventivi', 'listino', 'clienti']) {
     unsubs.push(store.subscribe(name, list => {
       S[name] = list; S.loaded[name] = true;
@@ -284,8 +308,9 @@ function renderLista(fromData) {
   const sum = (k, color, label, list, word) => `<button class="sum" data-filter="${k}" type="button" aria-pressed="${S.filter === k}"><span class="k"><i style="background:var(${color})"></i>${label}</span><span class="v">${fmtEur(sumOf(list))}</span><span class="c">${list.length} ${word(list.length)}</span></button>`;
   main.innerHTML = `
     ${installBanner()}
+    ${trasferimentoBanner()}
     <div class="head">
-      <div><span class="eyebrow">Impresa Edile Nazifoski</span><h1>Preventivi</h1></div>
+      <div><span class="eyebrow">${S.user && S.user.locale ? 'Dati solo su questo telefono' : 'Impresa Edile Nazifoski'}</span><h1>Preventivi</h1></div>
       <button class="btn primary" data-act="new" type="button">${IC.plus} Nuovo preventivo</button>
     </div>
     <div class="summary">
@@ -582,6 +607,8 @@ async function onAct(b) {
   if (act === 'logout') return esci();
   if (act === 'help') return showHelp();
   if (act === 'import') return $('#imp-file').click();
+  if (act === 'backup') return esportaBackup();
+  if (act === 'trasferisci') return trasferisciLocale();
   if (!p) return;
   const sEl = b.closest('[data-sez]'); const si = sEl ? +sEl.dataset.sez : -1;
   const vEl = b.closest('[data-voce]'); const vi = vEl ? +vEl.dataset.voce : -1;
@@ -827,10 +854,14 @@ function renderImpostazioni() {
   main.innerHTML = `
     <div class="head"><div><span class="eyebrow">Valgono per tutti i nuovi preventivi</span><h1>Impostazioni</h1></div><span class="savestate" id="saveState" aria-live="polite"></span></div>
     <div class="settings">
-      <section class="card">
+      ${u.locale ? `<section class="card">
+        <h2>Dati solo su questo telefono</h2>
+        <p class="help" style="margin:0 0 12px">L'archivio online non è ancora collegato: preventivi, listino e clienti sono salvati solo su questo dispositivo. Fai spesso una copia di sicurezza. Quando colleghi Firebase (ISTRUZIONI, passo 1) potrai trasferirli online.</p>
+        <button class="btn primary" type="button" data-act="backup">Esporta copia di sicurezza</button>
+      </section>` : `<section class="card">
         <h2>Il tuo account</h2>
         <div class="account"><span>Accesso come <b>${esc(u.email)}</b>${u.isOwner ? ' · titolare' : ''}</span><button class="btn" type="button" data-act="logout">Esci</button></div>
-      </section>
+      </section>`}
       ${u.isOwner ? `<section class="card">
         <h2>Persone autorizzate</h2>
         <p class="help">Chi è in questo elenco può vedere e modificare preventivi, listino e clienti. Usa l'email con cui la persona accede (Google o email e password).</p>
@@ -872,6 +903,11 @@ function renderImpostazioni() {
         <input type="file" id="imp-file" accept="application/json,.json" hidden>
         <button class="btn" type="button" data-act="import">Scegli il file…</button>
       </section>
+      ${u.locale ? '' : `<section class="card">
+        <h2>Copia di sicurezza</h2>
+        <p class="help">Un file con tutti i preventivi, il listino e i clienti, da conservare o reimportare.</p>
+        <button class="btn" type="button" data-act="backup">Esporta copia di sicurezza</button>
+      </section>`}
     </div>`;
   renderPeople();
   $('#imp-file').addEventListener('change', onImportFile);
@@ -916,6 +952,23 @@ async function onImportFile(e) {
   } catch (err) {
     toast(err instanceof SyntaxError ? 'Il file non è leggibile. Usa il file nazifoski-dati.json.' : (err.message || 'Importazione non riuscita'));
   }
+}
+
+/* ---------- Copia di sicurezza ---------- */
+async function esportaBackup() {
+  const strip = r => ({ ...r });
+  const { ...az } = S.azienda;
+  const dati = { formato: 'nazifoski-dati', esportato: new Date().toISOString(), preventivi: S.preventivi.map(strip), listino: S.listino.map(strip), clienti: S.clienti.map(strip), azienda: az };
+  const nome = `nazifoski-dati-${today()}.json`;
+  const blob = new Blob([JSON.stringify(dati, null, 1)], { type: 'application/json' });
+  const file = new File([blob], nome, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: nome }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  toast('Copia di sicurezza salvata: ' + nome);
 }
 
 /* ---------- Installazione (completata in pwa.js) ---------- */
