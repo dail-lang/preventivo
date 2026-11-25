@@ -102,6 +102,41 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2b. Tasto Indietro (gesto di Android): chiude la cosa in cima, non esce dall'app
+  {
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', seedBase());
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('[data-act="vPick"]');
+    await page.waitForSelector('#pk-q');
+    await page.click('[data-close="ok"]');
+    await page.click('[data-act="vPick"]');
+    await page.waitForSelector('#pk-q');
+    await page.goBack();
+    await page.waitForTimeout(300);
+    check('indietro: chiude la finestra del listino e resta nel preventivo', !(await page.isVisible('#pk-q')) && await page.isVisible('.totbar'));
+    await page.goBack();
+    await page.waitForTimeout(300);
+    check('indietro: dal preventivo torna all\'elenco', await page.isVisible('[data-open="acorpo"]') && !(await page.isVisible('.totbar')));
+    await page.click('[data-open="acorpo"]');
+    await page.click('[data-act="back"]');
+    await page.waitForTimeout(300);
+    check('indietro: dopo apri/chiudi l\'app è ancora aperta', page.url().includes('index.html') && await page.isVisible('[data-open="acorpo"]'));
+    // finestra che si chiude e preventivo che si apre nello stesso momento
+    await page.click('#bottomnav [data-view="clienti"]');
+    await page.click('[data-cl="c1"]');
+    await page.click('#cf-new');
+    await page.waitForSelector('.totbar');
+    await page.click('[data-act="back"]');
+    await page.waitForTimeout(500);
+    check('indietro: da cliente → nuovo preventivo → indietro, l\'app resta aperta', page.url().includes('index.html') && await page.isVisible('#main .head h1'));
+    await page.goBack().catch(() => {});
+    await page.waitForTimeout(500);
+    check('indietro: un altro «Indietro» non lascia l\'app con l\'editor aperto a metà', !(await page.isVisible('.totbar')));
+    check('indietro: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 3. Numeri doppi
   {
     const s = seedBase();

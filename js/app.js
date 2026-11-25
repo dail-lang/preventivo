@@ -2,6 +2,7 @@
 import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2 } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
+import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
 import { firebaseConfig } from '../firebase-config.js';
 
 const PARAMS = new URLSearchParams(location.search);
@@ -58,20 +59,25 @@ function toast(msg) {
 }
 
 /* ---------- Indietro (gesto Android, tasto del browser) ---------- */
+// Finché c'è qualcosa di aperto (editor, finestra, anteprima) la cronologia ha UNA voce in più:
+// «Indietro» chiude la cosa in cima. history.back() arriva in ritardo, quindi finché non è arrivato
+// non si aggiunge una voce nuova (altrimenti il ritorno successivo uscirebbe dall'app).
 const layers = [];
-let skipPop = 0;
-function openLayer(name, onBack) { layers.push({ name, onBack }); history.pushState({ nz: layers.length }, ''); }
+let hasEntry = false, backPending = false;
+function ensureEntry() { if (layers.length && !hasEntry && !backPending) { history.pushState({ nz: 1 }, ''); hasEntry = true; } }
+function openLayer(name, onBack) { layers.push({ name, onBack }); ensureEntry(); }
 function closeLayer(name) {
   const i = layers.map(l => l.name).lastIndexOf(name);
   if (i < 0) return;
-  const n = layers.length - i;
   layers.splice(i);
-  skipPop += n; history.go(-n);
+  if (!layers.length && hasEntry) { hasEntry = false; backPending = true; history.back(); }
 }
 addEventListener('popstate', () => {
-  if (skipPop > 0) { skipPop--; return; }
+  if (backPending) { backPending = false; ensureEntry(); return; }
+  hasEntry = false;
   const l = layers.pop();
   if (l) l.onBack();
+  ensureEntry();
 });
 
 /* ---------- Schermate di accesso ---------- */
@@ -607,6 +613,7 @@ async function onAct(b) {
   if (act === 'logout') return esci();
   if (act === 'help') return showHelp();
   if (act === 'import') return $('#imp-file').click();
+  if (act === 'pdfImport') return $('#pdf-file').click();
   if (act === 'backup') return esportaBackup();
   if (act === 'trasferisci') return trasferisciLocale();
   if (!p) return;
@@ -898,6 +905,12 @@ function renderImpostazioni() {
         <button class="btn" type="button" data-act="help">Come installarla su iPhone e Android</button>
       </section>
       <section class="card">
+        <h2>Importa preventivi da PDF</h2>
+        <p class="help">Scegli i PDF dei preventivi fatti in passato (anche tanti insieme). Vengono letti su questo dispositivo, senza inviarli a nessuno. Per ognuno controlli quello che è stato capito, correggi se serve e lo salvi: le voci finiscono anche nel listino e i clienti in rubrica.</p>
+        <input type="file" id="pdf-file" accept="application/pdf,.pdf" multiple hidden>
+        <button class="btn primary" type="button" data-act="pdfImport">Scegli i PDF…</button>
+      </section>
+      <section class="card">
         <h2>Importa dati</h2>
         <p class="help">Carica il file <b>nazifoski-dati.json</b> con preventivi, listino e clienti dell'app precedente. Vengono aggiunti solo quelli che mancano: puoi ripeterlo senza creare doppioni.</p>
         <input type="file" id="imp-file" accept="application/json,.json" hidden>
@@ -911,6 +924,7 @@ function renderImpostazioni() {
     </div>`;
   renderPeople();
   $('#imp-file').addEventListener('change', onImportFile);
+  $('#pdf-file').addEventListener('change', onPdfFiles);
   const pa = $('#pa-email'); if (pa) pa.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addPersona(); } });
   enter();
 }
@@ -952,6 +966,127 @@ async function onImportFile(e) {
   } catch (err) {
     toast(err instanceof SyntaxError ? 'Il file non è leggibile. Usa il file nazifoski-dati.json.' : (err.message || 'Importazione non riuscita'));
   }
+}
+
+/* ---------- Preventivi vecchi da PDF ---------- */
+async function onPdfFiles(e) {
+  const files = Array.from(e.target.files || []); e.target.value = '';
+  if (!files.length) return;
+  let lib;
+  try { lib = await (await import('./pdf.js')).caricaPdfJs(); } catch (err) { toast('Non riesco a leggere i PDF qui. Riprova.'); return; }
+  openModal(`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="lp-t" style="width:min(440px,100%)">
+    <div class="sheet-h"><h2 id="lp-t">Leggo i PDF…</h2></div>
+    <div class="sheet-b"><p id="lp-n" style="margin:0;color:var(--ink-soft)">0 di ${files.length}</p><div class="progress"><i id="lp-bar" style="width:0%"></i></div></div></div>`);
+  const letti = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    let r;
+    try { r = leggiPreventivo(await righeDaPdf(lib, new Uint8Array(await f.arrayBuffer()))); }
+    catch (err) { console.warn(err); r = { errore: 'illeggibile', avvisi: [] }; }
+    letti.push({ nome: f.name, ...r });
+    const n = $('#lp-n'), bar = $('#lp-bar');
+    if (n) n.textContent = `${i + 1} di ${files.length}`;
+    if (bar) bar.style.width = Math.round((i + 1) / files.length * 100) + '%';
+  }
+  closeModal(false);
+  // in ordine di data: i numeri seguono la cronologia; quelli illeggibili alla fine
+  letti.sort((a, b) => (a.preventivo && a.preventivo.data ? 0 : 1) - (b.preventivo && b.preventivo.data ? 0 : 1) || String(a.preventivo?.data || '').localeCompare(String(b.preventivo?.data || '')));
+  const esito = { salvati: 0, saltati: 0, voci: 0 };
+  for (let i = 0; i < letti.length; i++) await rivedi(letti[i], i, letti.length, esito);
+  toast(esito.salvati ? `Importati ${esito.salvati} preventivi${esito.voci ? `, ${esito.voci} voci nel listino` : ''}${esito.saltati ? ` (${esito.saltati} saltati)` : ''}` : 'Nessun preventivo importato');
+  if (S.view === 'impostazioni') renderImpostazioni();
+}
+
+function rivedi(item, i, n, esito) {
+  return new Promise(resolve => {
+    const ultimo = i === n - 1;
+    const testa = `<div class="sheet-h"><h2 id="ri-t">Preventivo vecchio ${i + 1} di ${n}</h2><span style="font-size:13px;color:var(--stone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%">${esc(item.nome)}</span></div>`;
+    if (item.errore === 'senza-testo' || item.errore === 'illeggibile' || !item.preventivo) {
+      openModal(`<div class="sheet" id="ri" role="dialog" aria-modal="true" aria-labelledby="ri-t">${testa}
+        <div class="sheet-b"><p class="msg err" style="margin:0">${item.errore === 'senza-testo' ? 'Questo PDF non contiene testo (forse è una foto o una scansione): non posso leggerlo. Inseriscilo a mano con «Nuovo preventivo».' : 'Questo file non si riesce a leggere come PDF.'}</p></div>
+        <div class="sheet-f"><button class="btn primary" type="button" id="ri-salta">${ultimo ? 'Chiudi' : 'Avanti'}</button></div></div>`, () => resolve());
+      $('#ri-salta').onclick = () => { esito.saltati++; closeModal(false); };
+      return;
+    }
+    const p = item.preventivo;
+    const umOpt = v => opt(UM.map(u => [u, u]), v);
+    const ivaList = IVA.some(([v]) => Number(v) === Number(p.iva)) ? IVA : [...IVA, [p.iva, p.iva + '%']];
+    const voceHtml = (v, k) => `<div class="ri-voce" data-k="${k}">
+      <div class="rd"><textarea class="in" data-k="desc" aria-label="Descrizione voce ${k + 1}">${esc(v.desc)}</textarea></div>
+      <input class="in" data-k="qta" inputmode="decimal" value="${esc(v.qta)}" aria-label="Quantità" placeholder="Q.tà">
+      <select class="in" data-k="um" aria-label="Unità di misura">${umOpt(v.um)}</select>
+      <input class="in" data-k="prezzo" inputmode="decimal" value="${esc(v.prezzo)}" aria-label="Prezzo €" placeholder="Prezzo €">
+      <button class="icon-btn del" type="button" data-rdel="${k}" aria-label="Togli voce">${IC.trash}</button></div>`;
+    openModal(`<div class="sheet" id="ri" role="dialog" aria-modal="true" aria-labelledby="ri-t" style="width:min(820px,100%)">${testa}
+      <div class="sheet-b">
+        ${item.avvisi.length ? `<ul class="ri-avvisi" id="ri-avvisi">${item.avvisi.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+        <div class="grid two">
+          <label class="field"><span>Cliente</span><input class="in" id="ri-nome" value="${esc(p.cliente.nome)}" autocapitalize="words"></label>
+          <label class="field"><span>Indirizzo</span><input class="in" id="ri-ind" value="${esc(p.cliente.indirizzo)}"></label>
+          <label class="field"><span>Data</span><input class="in" id="ri-data" type="date" value="${esc(p.data)}"></label>
+          <label class="field"><span>Oggetto</span><input class="in" id="ri-ogg" value="${esc(p.oggetto)}"></label>
+          <label class="field"><span>Stato</span><select class="in" id="ri-stato">${opt(STATI, 'inviato')}</select></label>
+          <label class="field"><span>IVA</span><select class="in" id="ri-iva">${opt(ivaList, p.iva)}</select></label>
+        </div>
+        <div id="ri-voci">${p.sezioni[0].voci.map(voceHtml).join('')}</div>
+        <button class="btn" type="button" id="ri-add" style="align-self:flex-start">${IC.plus} Voce</button>
+        <div class="ri-tot" id="ri-tot"></div>
+        <label class="check"><input type="checkbox" id="ri-listino" checked> Aggiungi le voci al listino prezzi</label>
+        <label class="check"><input type="checkbox" id="ri-rubrica" checked> Aggiungi il cliente alla rubrica</label>
+      </div>
+      <div class="sheet-f"><button class="btn left" type="button" id="ri-salta">Salta</button><button class="btn primary" type="button" id="ri-salva">${ultimo ? 'Salva e chiudi' : 'Salva e avanti'}</button></div>
+    </div>`, () => resolve());
+    const leggiVoci = () => $$('#ri-voci .ri-voce').map((el, k) => ({ id: 'v' + (k + 1), desc: $('[data-k="desc"]', el).value.trim(), qta: $('[data-k="qta"]', el).value.trim(), um: $('[data-k="um"]', el).value, prezzo: $('[data-k="prezzo"]', el).value.trim() }));
+    const corrente = () => ({ ...p, iva: Number($('#ri-iva').value), sezioni: [{ id: uid(), titolo: '', voci: leggiVoci() }] });
+    const aggiorna = () => {
+      const tot = calc(corrente()).totale; const el = $('#ri-tot'); if (!el) return;
+      const letto = item.totaleLetto;
+      const ok = isFinite(letto) ? Math.abs(letto - tot) < 0.02 : false;
+      el.className = 'ri-tot ' + (ok ? 'ok' : 'bad');
+      el.innerHTML = `<span>Totale calcolato ${fmtEur(tot)}</span><span>${isFinite(letto) ? `sul PDF ${fmtEur(letto)} ${ok ? '✓' : '— controlla'}` : 'totale del PDF non trovato'}</span>`;
+    };
+    $$('#ri textarea').forEach(autoGrow);
+    aggiorna();
+    $('#ri').addEventListener('input', e => { if (e.target.tagName === 'TEXTAREA') autoGrow(e.target); aggiorna(); });
+    $('#ri-voci').addEventListener('click', e => { const b = e.target.closest('[data-rdel]'); if (b) { b.closest('.ri-voce').remove(); aggiorna(); } });
+    $('#ri-add').onclick = () => { $('#ri-voci').insertAdjacentHTML('beforeend', voceHtml({ desc: '', qta: '', um: 'mq', prezzo: '' }, $$('#ri-voci .ri-voce').length)); aggiorna(); };
+    $('#ri-salta').onclick = () => { esito.saltati++; closeModal(false); };
+    $('#ri-salva').onclick = () => {
+      const nome = $('#ri-nome').value.trim();
+      const data = $('#ri-data').value || today();
+      const voci = leggiVoci().filter(v => v.desc || v.prezzo);
+      if (!nome) { toast('Scrivi il nome del cliente'); $('#ri-nome').focus(); return; }
+      if (!voci.length) { toast('Serve almeno una voce'); return; }
+      const anno = Number(data.slice(0, 4)) || new Date().getFullYear();
+      const np = {
+        ...p, id: uid(), anno, numero: nextNumero(S.preventivi.concat(esito.nuovi || []), anno), data, esempio: false,
+        stato: $('#ri-stato').value, iva: Number($('#ri-iva').value), oggetto: $('#ri-ogg').value.trim(),
+        cliente: { ...p.cliente, nome, indirizzo: $('#ri-ind').value.trim() },
+        sezioni: [{ id: uid(), titolo: '', voci: voci.map(v => ({ ...v, id: uid() })) }],
+        creato: new Date().toISOString(), modificato: new Date().toISOString(), importatoDa: item.nome
+      };
+      np.totale = calc(np).totale;
+      (esito.nuovi = esito.nuovi || []).push(np);
+      const { id, ...dati } = np;
+      write('preventivi', id, dati);
+      if ($('#ri-listino').checked) {
+        for (const v of voci) {
+          const pr = num(v.prezzo); if (!v.desc || !isFinite(pr)) continue;
+          const key = v.desc.toLowerCase();
+          const ex = S.listino.find(x => (x.desc || '').trim().toLowerCase() === key);
+          if (ex && ex.dataPrezzo && ex.dataPrezzo > data) continue;
+          const { id: lid, ...rest } = ex || {};
+          write('listino', ex ? ex.id : uid(), { ...rest, desc: v.desc, um: v.um, prezzo: round2(pr), categoria: (ex && ex.categoria) || categoriaDa(v.desc), dataPrezzo: data, indicativo: false });
+          if (!ex) esito.voci++;
+        }
+      }
+      if ($('#ri-rubrica').checked && !S.clienti.some(c => (c.nome || '').trim().toLowerCase() === nome.toLowerCase())) {
+        write('clienti', uid(), { nome, indirizzo: np.cliente.indirizzo, cfpiva: np.cliente.cfpiva || '', telefono: np.cliente.telefono || '', email: np.cliente.email || '' });
+      }
+      esito.salvati++;
+      closeModal(true);
+    };
+  });
 }
 
 /* ---------- Copia di sicurezza ---------- */

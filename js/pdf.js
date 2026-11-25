@@ -14,6 +14,12 @@ function loadScript(src) {
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const $ = (s, r = document) => r.querySelector(s);
 
+/** Carica pdf.js (incluso nell'app, funziona anche senza rete) e restituisce la libreria. */
+export async function caricaPdfJs() {
+  await Promise.all([loadScript(VENDOR.worker), loadScript(VENDOR.pdfjs)]);
+  return window.pdfjsLib;
+}
+
 export function fileName(p) {
   const cli = (p.cliente?.nome || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
   return `Preventivo ${p.esempio ? 'esempio' : p.anno + '-' + String(p.numero).padStart(3, '0')}${cli ? ' ' + cli : ''}.pdf`;
