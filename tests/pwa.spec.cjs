@@ -140,6 +140,7 @@ const seed = { user: { email: 'impresaedilenazifoski@gmail.com' }, preventivi: [
     check('pubblicazione: lo script prepara il sito', ok1 && fs.existsSync(path.join(site, 'index.html')));
     const v1 = ok1 ? /const VERSION = '([^']+)'/.exec(fs.readFileSync(path.join(site, 'sw.js'), 'utf8'))[1] : '';
     check('pubblicazione: versione legata al commit', v1.includes('aaaaaaaa'), v1);
+    check('pubblicazione: versione visibile nell\'app', ok1 && fs.readFileSync(path.join(site, 'js/versione.js'), 'utf8').includes("'aaaaaaaa"));
     check('pubblicazione: niente test né documenti nel sito', ok1 && !fs.existsSync(path.join(site, 'tests')) && !fs.existsSync(path.join(site, 'package.json')));
     if (ok1) {
       const srv2 = await serve(site);
@@ -151,16 +152,29 @@ const seed = { user: { email: 'impresaedilenazifoski@gmail.com' }, preventivi: [
       await page.goto(b2 + 'index.html?test=1');
       check('aggiornamento: service worker attivo', (await swReady(page)) === 'ready');
       await page.waitForTimeout(800);
+      await page.reload(); // l'app è già stata aperta altre volte (come sul telefono)
+      await page.waitForSelector('[data-open]', { timeout: 10000 }).catch(() => {});
       // nuova pubblicazione con un file cambiato
       prep('bbbbbbbb2222');
       fs.appendFileSync(path.join(site, 'js/calc.js'), '\nwindow.__nzv = 2;\n');
-      await page.reload();
+      // l'app torna in primo piano (iPhone: «chiudi e riapri» spesso riprende senza ricaricare)
+      await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange')); });
+      await page.waitForFunction(() => window.__nzv === 2, null, { timeout: 20000 }).catch(() => {});
+      check('aggiornamento: tornando in primo piano si aggiorna da sola, senza toccare nulla', await page.evaluate(() => window.__nzv) === 2);
+      const ver = await page.evaluate(async () => { const m = await import('./js/versione.js'); return m.VERSIONE; }).catch(() => '');
+      check('aggiornamento: la versione nuova è quella del commit', String(ver).startsWith('bbbbbbbb'), ver);
+      // con un preventivo aperto non ricarica: chiede
+      await page.waitForSelector('[data-open]', { timeout: 10000 });
+      await page.click('[data-open]');
+      await page.waitForSelector('.totbar');
+      prep('cccccccc3333');
+      fs.appendFileSync(path.join(site, 'js/calc.js'), '\nwindow.__nzv = 3;\n');
+      await page.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); await r.update(); });
       await page.waitForSelector('#nz-update', { timeout: 15000 }).catch(() => {});
-      check('aggiornamento: compare «Nuova versione disponibile»', await page.isVisible('#nz-update'));
-      check('aggiornamento: prima di «Aggiorna» restano i file vecchi tutti insieme', await page.evaluate(() => window.__nzv) === undefined);
+      check('aggiornamento: con un preventivo aperto chiede «Aggiorna» invece di ricaricare', await page.isVisible('#nz-update') && await page.isVisible('.totbar'));
       await Promise.all([page.waitForEvent('load', { timeout: 15000 }).catch(() => {}), page.click('#nz-update button').catch(() => {})]);
       await page.waitForTimeout(1000);
-      check('aggiornamento: dopo «Aggiorna» i file sono quelli nuovi', await page.evaluate(() => window.__nzv) === 2);
+      check('aggiornamento: dopo «Aggiorna» i file sono quelli nuovi', await page.evaluate(() => window.__nzv) === 3);
       await ctx.close(); srv2.close();
     }
   }

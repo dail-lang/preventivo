@@ -137,6 +137,35 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2c. Listino: prezzi medi di Rimini
+  {
+    const s = seedBase();
+    s.listino = [
+      { id: 'l01', categoria: 'Demolizioni e rimozioni', desc: 'Vecchia voce indicativa', um: 'mq', prezzo: 18, indicativo: true },
+      { id: 'mio', categoria: 'Varie', desc: 'Voce mia', um: 'mq', prezzo: 77 }
+    ];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    await page.waitForSelector('[data-open]');
+    await page.click('#bottomnav [data-view="listino"]');
+    await page.click('[data-act="lRimini"]').catch(() => {});
+    await page.click('[data-close="ok"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('listino: «Nuova voce» visibile sul telefono', await page.isVisible('[data-act="lNew"]'));
+    const n = (await page.$$('.li')).length;
+    check('listino Rimini: caricate le voci di base', n >= 60, n);
+    check('listino Rimini: la voce del titolare resta', await page.isVisible('.li:has-text("Voce mia") .p:has-text("€ 77,00")'));
+    check('listino Rimini: la vecchia voce indicativa sparisce', !(await page.isVisible('text=Vecchia voce indicativa')));
+    check('listino Rimini: voci segnate come indicative', (await page.$$('.li .tag')).length >= 60);
+    await page.click('[data-act="lRimini"]').catch(() => {});
+    await page.click('[data-close="ok"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('listino Rimini: ricaricare non crea doppioni', (await page.$$('.li')).length === n);
+    await page.click('#bottomnav [data-view="impostazioni"]');
+    check('impostazioni: mostra la versione dell\'app', await page.isVisible('text=Versione'));
+    check('listino Rimini: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 3. Numeri doppi
   {
     const s = seedBase();

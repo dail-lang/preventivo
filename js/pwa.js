@@ -60,11 +60,18 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloading && window.__nzHadController) { reloading = true; location.reload(); } });
   window.__nzHadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(reg => {
-    if (reg.waiting && navigator.serviceWorker.controller) updateBar(reg);
-    reg.addEventListener('updatefound', () => {
-      const w = reg.installing; if (!w) return;
-      w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) updateBar(reg); });
-    });
+    // Versione nuova pronta: se non c'è un lavoro aperto si aggiorna subito da sola, altrimenti chiede.
+    const pronta = () => {
+      if (!reg.waiting || !navigator.serviceWorker.controller) return;
+      const occupato = document.body.classList.contains('in-editor') || !document.getElementById('modal')?.hidden || !document.getElementById('preview')?.hidden;
+      if (occupato) updateBar(reg); else reg.waiting.postMessage('SKIP_WAITING');
+    };
+    const segui = w => { if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') pronta(); }); };
+    pronta();
+    segui(reg.installing); // l'aggiornamento può essere già partito prima di questo punto
+    reg.addEventListener('updatefound', () => segui(reg.installing));
+    // iPhone: «chiudi e riapri» spesso riprende l'app senza ricaricarla: si controlla quando torna in primo piano
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().then(pronta).catch(() => {}); });
     setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
   }).catch(err => console.warn('Service worker non registrato', err));
 }

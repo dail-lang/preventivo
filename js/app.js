@@ -3,6 +3,8 @@ import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, 
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
+import { LISTINO_RIMINI, pianoListino } from './listino-rimini.js';
+import { VERSIONE } from './versione.js';
 import { firebaseConfig } from '../firebase-config.js';
 
 const PARAMS = new URLSearchParams(location.search);
@@ -607,6 +609,7 @@ async function onAct(b) {
   const act = b.dataset.act; const p = S.current;
   if (act === 'new') { const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
   if (act === 'lNew') return editListino(null);
+  if (act === 'lRimini') return caricaListinoRimini();
   if (act === 'cNew') return editCliente(null);
   if (act === 'paAdd') return addPersona();
   if (act === 'paDel') return removePersona(b.dataset.email);
@@ -707,10 +710,11 @@ function closeModal(val, fromBack) {
 modal.addEventListener('click', e => { if (e.target === modal) closeModal(false); const b = e.target.closest('[data-close]'); if (b) closeModal(b.dataset.close === 'ok'); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.hidden) closeModal(false); });
 function confirmBox(title, text, ok) {
+  const rosso = /elimina|togli/i.test(ok) ? ' style="background:var(--bad);border-color:var(--bad);color:#fff"' : '';
   return new Promise(res => openModal(`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cb-t" style="width:min(440px,100%)">
     <div class="sheet-h"><h2 id="cb-t">${esc(title)}</h2></div>
     <div class="sheet-b"><p style="margin:0;color:var(--ink-soft)">${esc(text)}</p></div>
-    <div class="sheet-f"><button class="btn" type="button" data-close="no" autofocus>Annulla</button><button class="btn primary" type="button" data-close="ok" style="background:var(--bad);border-color:var(--bad);color:#fff">${esc(ok)}</button></div>
+    <div class="sheet-f"><button class="btn" type="button" data-close="no" autofocus>Annulla</button><button class="btn primary" type="button" data-close="ok"${rosso}>${esc(ok)}</button></div>
   </div>`, res));
 }
 
@@ -764,7 +768,7 @@ async function openPreview() {
 function renderListino() {
   main.innerHTML = `
     <div class="head"><div><span class="eyebrow">Voci pronte da riusare</span><h1>Listino prezzi</h1></div>
-      <button class="btn primary" type="button" data-act="lNew">${IC.plus} Nuova voce</button></div>
+      <div class="head-actions"><button class="btn" type="button" data-act="lRimini">Prezzi medi Rimini</button><button class="btn primary" type="button" data-act="lNew">${IC.plus} Nuova voce</button></div></div>
     <div class="toolbar"><input class="in search" id="lq" type="search" enterkeyhint="search" placeholder="Cerca lavorazione o categoria" value="${esc(S.lq)}" aria-label="Cerca nel listino"></div>
     <div class="tbl" id="lrows"></div>`;
   $('#lq').addEventListener('input', e => { S.lq = e.target.value; renderListinoRows(); });
@@ -807,6 +811,16 @@ function editListino(x) {
   });
   const del = $('#lf-del');
   if (del) del.onclick = () => { write('listino', x.id, DEL); closeModal(true); toast('Voce eliminata dal listino'); };
+}
+
+async function caricaListinoRimini() {
+  const piano = pianoListino(S.listino);
+  if (!piano.scrivi.length && !piano.elimina.length) { toast('Il listino ha già tutte le voci con i prezzi medi di Rimini'); return; }
+  const ok = await confirmBox('Caricare i prezzi medi di Rimini?', `Aggiungo o aggiorno ${piano.scrivi.length} voci con prezzi medi indicativi per la zona di Rimini (IVA esclusa). Le voci che hai modificato tu e quelle prese dai tuoi PDF restano come sono.`, 'Carica');
+  if (!ok) return;
+  for (const id of piano.elimina) write('listino', id, DEL);
+  for (const v of piano.scrivi) { const { id, ...d } = v; write('listino', id, d); }
+  toast(`Listino aggiornato: ${piano.scrivi.length} voci con prezzi medi di Rimini`);
 }
 
 /* ---------- Clienti ---------- */
@@ -916,6 +930,7 @@ function renderImpostazioni() {
         <input type="file" id="imp-file" accept="application/json,.json" hidden>
         <button class="btn" type="button" data-act="import">Scegli il file…</button>
       </section>
+      <p style="text-align:center;color:var(--stone);font-size:13px;margin:18px 0 0">Nazifoski Preventivi · Versione ${esc(VERSIONE)}</p>
       ${u.locale ? '' : `<section class="card">
         <h2>Copia di sicurezza</h2>
         <p class="help">Un file con tutti i preventivi, il listino e i clienti, da conservare o reimportare.</p>

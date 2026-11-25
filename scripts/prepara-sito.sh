@@ -9,3 +9,5 @@ touch "$DEST/.nojekyll"
 SHORT=$(printf '%s' "$SHA" | cut -c1-12)
 sed -i "s/^const VERSION = '.*';/const VERSION = 'nazifoski-$SHORT';/" "$DEST/sw.js"
 grep -q "const VERSION = 'nazifoski-$SHORT';" "$DEST/sw.js"
+sed -i "s/^export const VERSIONE = '.*';/export const VERSIONE = '$SHORT';/" "$DEST/js/versione.js"
+grep -q "export const VERSIONE = '$SHORT';" "$DEST/js/versione.js"
