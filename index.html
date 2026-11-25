@@ -321,6 +321,9 @@ select.in { appearance: none; -webkit-appearance: none; background-image: linear
 .sheet-h { display: flex; align-items: center; gap: 10px; padding: 14px 12px 10px 18px; border-bottom: 1px solid var(--line-soft); }
 .sheet-h h2 { font-size: 18px; margin-right: auto; }
 .sheet-b { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }
+/* le righe di una finestra non si restringono: con elenchi lunghi scorre la finestra, il testo resta leggibile */
+.sheet-b > * { flex-shrink: 0; }
+.sheet-b.fisso { flex: none; overflow: visible; }
 .sheet-f { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 18px 16px; border-top: 1px solid var(--line-soft); flex-wrap: wrap; }
 .sheet-f .left { margin-right: auto; }
 @media (max-width: 719px) { .sheet-f .btn { flex: 1 1 auto; } .sheet-f .left { flex-basis: 100%; order: 3; } }

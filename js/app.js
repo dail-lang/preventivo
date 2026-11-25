@@ -731,7 +731,7 @@ function pickListino(si) {
   };
   openModal(`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pk-t">
     <div class="sheet-h"><h2 id="pk-t">Aggiungi dal listino</h2><button class="icon-btn" type="button" data-close="no" aria-label="Chiudi">${IC.x}</button></div>
-    <div class="sheet-b" style="padding-bottom:0"><input class="in" id="pk-q" type="search" enterkeyhint="search" placeholder="Cerca lavorazione" autofocus aria-label="Cerca nel listino"></div>
+    <div class="sheet-b fisso" style="padding-bottom:0"><input class="in" id="pk-q" type="search" enterkeyhint="search" placeholder="Cerca lavorazione" autofocus aria-label="Cerca nel listino"></div>
     <div class="sheet-b" id="pk-list">${draw('')}</div>
     <div class="sheet-f"><span class="left" id="pk-n" style="font-size:13.5px;color:var(--stone);align-self:center">Tocca una voce per aggiungerla alla sezione ${si + 1}</span><button class="btn primary" type="button" data-close="ok">Fatto</button></div>
   </div>`, () => { const y = window.scrollY; renderEditor(); window.scrollTo(0, y); });

@@ -161,6 +161,25 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await page.waitForTimeout(400);
     check('listino Rimini: ricaricare non crea doppioni', (await page.$$('.li')).length === n);
     await page.click('#bottomnav [data-view="impostazioni"]');
+    // con il listino lungo le voci della finestra «Dal listino» devono leggersi per intero
+    await page.click('#bottomnav [data-view="lista"]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('[data-act="vPick"]');
+    await page.waitForSelector('[data-pick]');
+    const pk = await page.$$eval('#pk-list .pick, #pk-list .pick-cat', els => {
+      const out = { traboccano: 0, sovrapposte: 0, n: els.length };
+      els.forEach((e, i) => {
+        if (e.scrollHeight > e.clientHeight + 1) out.traboccano++;
+        const n = els[i + 1]; if (n && n.getBoundingClientRect().top < e.getBoundingClientRect().bottom - 1) out.sovrapposte++;
+      });
+      return out;
+    });
+    const hq = await page.$eval('#pk-q', e => { const r = e.getBoundingClientRect(); const box = e.parentElement.getBoundingClientRect(); const top = document.elementFromPoint(r.left + 20, r.top + r.height / 2); return { visibile: Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top), toccabile: top === e }; });
+    check('dal listino: il campo di ricerca si vede intero e si può toccare', hq.visibile >= 44 && hq.toccabile, JSON.stringify(hq));
+    check('dal listino: nessuna voce schiacciata o sovrapposta', pk.n > 60 && pk.traboccano === 0 && pk.sovrapposte === 0, JSON.stringify(pk));
+    await page.click('[data-close="no"]');
+    await page.click('[data-act="back"]');
+    await page.click('#bottomnav [data-view="impostazioni"]');
     check('impostazioni: mostra la versione dell\'app', await page.isVisible('text=Versione'));
     check('listino Rimini: nessun errore', errors.length === 0, errors.join(' | '));
     await ctx.close();
