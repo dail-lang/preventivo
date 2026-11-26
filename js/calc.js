@@ -149,3 +149,20 @@ export function telefonoWa(tel) {
   if (!d.startsWith('39') || d.length <= 10) d = (d.length <= 10 ? '39' : '') + d;
   return d;
 }
+
+/** Giorni interi da una data ISO a oggi (0 se manca). */
+export function giorniDa(iso, oggiIso) {
+  if (!iso) return 0;
+  const t = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+  return Math.round((t(oggiIso) - t(String(iso))) / 86400000);
+}
+/** Id dei preventivi inviati che aspettano una telefonata: inviati (o richiamati) da almeno «giorni» giorni. */
+export function daRichiamare(list, oggiIso, giorni) {
+  const out = new Set();
+  for (const p of list || []) {
+    if (!p || p.esempio || p.stato !== 'inviato') continue;
+    const da = p.richiamato || p.dataInvio || p.data;
+    if (da && giorniDa(da, oggiIso) >= giorni) out.add(p.id);
+  }
+  return out;
+}

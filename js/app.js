@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -22,7 +22,7 @@ const SEZ_RAPIDE = ['Demolizioni e rimozioni', 'Impianto idraulico', 'Impianto e
 export const AZIENDA_BASE = {
   ragione: 'Impresa Edile Nazifoski', indirizzo: 'Via Villagrande 24, Rimini (RN)', telefono: '+39 352 203 7037',
   email: 'info@nazifoski.it', sito: 'www.nazifoski.it', piva: '03286630409', rea: 'RN-285905', iban: '',
-  ivaDefault: 10, tempi: '', pagamento: '', note: '', firma: false
+  ivaDefault: 10, tempi: '', pagamento: '', note: '', firma: false, giorniRichiamo: 10
 };
 
 /* ---------- Stato ---------- */
@@ -53,6 +53,8 @@ const IC = {
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>',
   doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></svg>',
   metro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+  tel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   google: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6h-4a12 12 0 0 0 0 10.8l4-3.1z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.3 6.6l4 3.1c.9-2.8 3.6-4.9 6.7-4.9z"/></svg>'
 };
@@ -312,13 +314,16 @@ function renderLista(fromData) {
   const attesa = all.filter(p => p.stato === 'inviato' && !p.esempio);
   const acc = all.filter(p => p.stato === 'accettato' && !p.esempio && String(p.data || '').startsWith(String(anno)));
   const dups = duplicati(all);
+  const oggi = today();
+  const richiamo = daRichiamare(all, oggi, Number(S.azienda.giorniRichiamo) || 10);
   const q = S.q.trim().toLowerCase();
-  let rows = sorted(all).filter(p => S.filter === 'tutti' || p.stato === S.filter);
+  let rows = sorted(all).filter(p => S.filter === 'tutti' || (S.filter === 'richiamare' ? richiamo.has(p.id) : p.stato === S.filter));
   if (q) rows = rows.filter(p => [numStr(p), p.cliente?.nome, p.oggetto, p.cantiere].join(' ').toLowerCase().includes(q));
   const sum = (k, color, label, list, word) => `<button class="sum" data-filter="${k}" type="button" aria-pressed="${S.filter === k}"><span class="k"><i style="background:var(${color})"></i>${label}</span><span class="v">${fmtEur(sumOf(list))}</span><span class="c">${list.length} ${word(list.length)}</span></button>`;
   main.innerHTML = `
     ${installBanner()}
     ${trasferimentoBanner()}
+    ${richiamo.size ? `<button class="note richiama" id="richiama" type="button" data-filter="${S.filter === 'richiamare' ? 'tutti' : 'richiamare'}">${IC.tel}<span><b>${richiamo.size} ${richiamo.size === 1 ? 'preventivo' : 'preventivi'} da richiamare</b> · inviati da più di ${Number(S.azienda.giorniRichiamo) || 10} giorni senza risposta</span><span class="vedi">${S.filter === 'richiamare' ? 'Mostra tutti' : 'Vedi'}</span></button>` : ''}
     <div class="head">
       <div><span class="eyebrow">${S.user && S.user.locale ? 'Dati solo su questo telefono' : 'Impresa Edile Nazifoski'}</span><h1>Preventivi</h1></div>
       <button class="btn primary" data-act="new" type="button">${IC.plus} Nuovo preventivo</button>
@@ -331,12 +336,12 @@ function renderLista(fromData) {
     <div class="toolbar">
       <input class="in search" id="q" type="search" enterkeyhint="search" placeholder="Cerca per cliente, lavoro o numero" value="${esc(S.q)}" aria-label="Cerca preventivi">
       <div class="chips" role="group" aria-label="Filtra per stato">
-        ${[['tutti', 'Tutti'], ...STATI].map(([k, l]) => `<button class="chip" type="button" data-filter="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join('')}
+        ${[['tutti', 'Tutti'], ...STATI, ['richiamare', 'Da richiamare']].map(([k, l]) => `<button class="chip" type="button" data-filter="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join('')}
       </div>
     </div>
     <div class="list" id="rows">
       ${!S.loaded.preventivi ? '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>' :
-        rows.length ? rows.map(p => rowHtml(p, dups.has(p.id))).join('') :
+        rows.length ? rows.map(p => rowHtml(p, dups.has(p.id), richiamo.has(p.id) ? oggi : null)).join('') :
         all.length ? '<div class="empty"><h3>Nessun preventivo trovato</h3><p>Prova a cambiare la ricerca o il filtro.</p></div>' :
         `<div class="empty"><h3>Ancora nessun preventivo</h3><p>Crea il primo: scegli le lavorazioni dal listino, l'app fa i conti e impagina il PDF da sola.</p><button class="btn primary" data-act="new" type="button">${IC.plus} Nuovo preventivo</button></div>`}
     </div>`;
@@ -346,14 +351,25 @@ function renderLista(fromData) {
   bindInstall();
   if (!fromData) enter();
 }
-function rowHtml(p, dup) {
+function rowHtml(p, dup, oggi, dentro) {
   const [sk, sl] = rowState(p);
+  if (oggi && S.filter === 'richiamare' && !dentro) {
+    const tel = String(p.cliente?.telefono || '').replace(/[^\d+]/g, '');
+    return `<div class="row-wrap">${rowHtml(p, dup, oggi, true)}<div class="row-call">
+      ${tel ? `<a class="btn" href="tel:${esc(tel)}">${IC.tel} Chiama</a>` : ''}
+      <button class="btn" type="button" data-act="richiamato" data-id="${esc(p.id)}">${IC.check} Richiamato</button>
+    </div></div>`;
+  }
   return `<button class="row" type="button" data-open="${esc(p.id)}">
     <span class="n">${esc(numStr(p))}${dup ? '<span class="dup">Numero già usato</span>' : ''}</span>
     <span class="who"><b>${esc(p.cliente?.nome || 'Cliente senza nome')}</b><span>${esc(p.oggetto || p.cantiere || 'Lavori da descrivere')}</span></span>
     <span class="st"><span class="pill st-${sk}">${sl}</span></span>
-    <span class="amt">${fmtEur(totaleDi(p))}<small>${esc(fmtDate(p.data))}</small></span>
+    <span class="amt">${fmtEur(totaleDi(p))}<small${oggi ? ' class="tardi"' : ''}>${esc(oggi ? quando(p, oggi) : fmtDate(p.data))}</small></span>
   </button>`;
+}
+function quando(p, oggi) {
+  const n = giorniDa(p.richiamato || p.dataInvio || p.data, oggi);
+  return `${p.richiamato ? 'richiamato' : 'inviato'} ${n === 1 ? '1 giorno' : n + ' giorni'} fa`;
 }
 
 const totaleDi = p => (Array.isArray(p.sezioni) ? calc(p).totale : Number(p.totale) || 0);
@@ -625,6 +641,7 @@ main.addEventListener('input', e => {
     let v = t.value; if (t.dataset.t === 'num') v = v === '' ? '' : Number(v);
     setPath(p, t.dataset.f, v);
     if (t.dataset.f === 'cliente.nome') fillCliente(t.value);
+    if (t.dataset.f === 'stato' && v === 'inviato') { p.dataInvio = today(); delete p.richiamato; }
     if (t.dataset.f === 'numero' && v !== '') { $('.ed-top h1').textContent = numStr(p); $('#dupwrap').innerHTML = dupNote(p); }
   } else if (t.dataset.v) {
     const si = +t.closest('[data-sez]').dataset.sez, vi = +t.closest('[data-voce]').dataset.voce;
@@ -642,6 +659,15 @@ async function onAct(b) {
   const act = b.dataset.act; const p = S.current;
   if (act === 'new') { const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
   if (act === 'lNew') return editListino(null);
+  if (act === 'richiamato') {
+    const x = S.preventivi.find(i => i.id === b.dataset.id); if (!x) return;
+    const { id, ...data } = x;
+    x.richiamato = today();
+    write('preventivi', id, { ...data, richiamato: x.richiamato });
+    renderLista(true);
+    toast('Segnato come richiamato: te lo ricordo di nuovo tra qualche giorno');
+    return;
+  }
   if (act === 'lRimini') return caricaListinoRimini();
   if (act === 'cNew') return editCliente(null);
   if (act === 'paAdd') return addPersona();
@@ -996,7 +1022,8 @@ function renderImpostazioni() {
       </section>
       <section class="card">
         <h2>Valori predefiniti</h2>
-        <div class="grid"><label class="field"><span>IVA predefinita</span><select class="in" id="s-iva" data-set="ivaDefault" data-t="num">${opt(IVA, a.ivaDefault)}</select></label></div>
+        <div class="grid two"><label class="field"><span>IVA predefinita</span><select class="in" id="s-iva" data-set="ivaDefault" data-t="num">${opt(IVA, a.ivaDefault)}</select></label>
+          <label class="field"><span>Ricordami di richiamare dopo (giorni)</span><input class="in" id="s-richiamo" type="number" inputmode="numeric" min="1" data-set="giorniRichiamo" data-t="num" value="${esc(a.giorniRichiamo ?? 10)}"></label></div>
       </section>
       <section class="card">
         <h2>Testi predefiniti</h2>

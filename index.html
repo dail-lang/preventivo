@@ -231,6 +231,16 @@ select.in { appearance: none; -webkit-appearance: none; background-image: linear
 }
 .note { background: var(--blue-tint); color: var(--blue-deep); border-radius: var(--r); padding: 12px 14px; font-size: 14.5px; margin-bottom: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
 .note.bad { background: var(--bad-tint); color: var(--bad); }
+.note.richiama { width: 100%; border: 0; text-align: left; cursor: pointer; flex-wrap: nowrap; justify-content: flex-start; background: var(--warn-tint); color: var(--warn); }
+.note.richiama svg { width: 20px; height: 20px; flex: none; }
+.note.richiama span:not(.vedi) { flex: 1; min-width: 0; }
+.note.richiama .vedi { font-weight: 600; text-decoration: underline; flex: none; }
+.row-wrap { border-top: 1px solid var(--line-soft); }
+.row-wrap:first-child { border-top: 0; }
+.row-wrap .row { border-top: 0; }
+.row-call { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 0 18px 14px; }
+.row-call .btn { flex: 1 1 0; min-height: 44px; text-decoration: none; color: inherit; }
+.row .amt small.tardi { color: var(--warn); font-weight: 600; }
 
 .sez { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .sez-h { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 16px; background: var(--paper-alt); border-bottom: 1px solid var(--line); }

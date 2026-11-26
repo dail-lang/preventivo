@@ -270,6 +270,43 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2f. Da richiamare
+  {
+    const s = seedBase();
+    const g = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+    s.preventivi = [
+      { ...fx.acorpo, id: 'r1', numero: 31, stato: 'inviato', dataInvio: g(20), cliente: { nome: 'Rossi Mario', telefono: '333 111 2222' } },
+      { ...fx.acorpo, id: 'r2', numero: 32, stato: 'inviato', dataInvio: g(3), cliente: { nome: 'Bianchi' } },
+      { ...fx.acorpo, id: 'r3', numero: 33, stato: 'bozza', cliente: { nome: 'Verdi' } }
+    ];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    await page.waitForSelector('[data-open]');
+    const ban = await page.textContent('#richiama').catch(() => '');
+    check('richiamare: avviso «1 preventivo da richiamare»', /1 preventivo da richiamare/.test(ban), ban);
+    await page.click('#richiama').catch(() => {});
+    await page.waitForTimeout(300);
+    check('richiamare: filtro attivo', (await page.getAttribute('[data-filter="richiamare"].chip', 'aria-pressed').catch(() => null)) === 'true');
+    const ids = await page.$$eval('#rows [data-open]', a => a.map(x => x.dataset.open));
+    check('richiamare: in elenco solo quello vecchio', ids.join() === 'r1', ids.join());
+    check('richiamare: «inviato 20 giorni fa»', (await page.textContent('#rows').catch(() => '')).includes('inviato 20 giorni fa'));
+    check('richiamare: link per telefonare', (await page.getAttribute('#rows a[href^="tel:"]', 'href').catch(() => null)) === 'tel:3331112222');
+    await page.click('#rows [data-act="richiamato"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('richiamare: «Richiamato» lo toglie dall\'elenco', (await page.$$('#rows [data-open]')).length === 0);
+    check('richiamare: avviso sparito', (await page.$('#richiama')) === null);
+    // passare a «Inviato» segna la data di invio
+    await page.click('[data-filter="tutti"].chip');
+    await page.click('[data-open="r3"]');
+    await page.selectOption('#f-stato', 'inviato');
+    await page.waitForTimeout(900);
+    await page.click('[data-act="back"]');
+    await page.waitForTimeout(900);
+    // la data del preventivo è vecchia (febbraio): senza data di invio di oggi tornerebbe «da richiamare»
+    check('richiamare: appena passato a «Inviato» non va richiamato', (await page.$('#richiama')) === null);
+    check('richiamare: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 3. Numeri doppi
   {
     const s = seedBase();

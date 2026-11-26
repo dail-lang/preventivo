@@ -109,3 +109,23 @@ test('telefonoWa: numero per WhatsApp', () => {
   assert.equal(telefonoWa('0541 123456'), '390541123456');
   assert.equal(telefonoWa(''), '');
 });
+
+import { daRichiamare, giorniDa } from '../js/calc.js';
+test('giorniDa: giorni trascorsi tra due date', () => {
+  assert.equal(giorniDa('2026-11-06', '2026-11-26'), 20);
+  assert.equal(giorniDa('2026-11-26', '2026-11-26'), 0);
+  assert.equal(giorniDa('', '2026-11-26'), 0);
+});
+test('daRichiamare: inviati da troppi giorni, non richiamati da poco', () => {
+  const l = [
+    { id: 'vecchio', stato: 'inviato', dataInvio: '2026-11-06' },
+    { id: 'recente', stato: 'inviato', dataInvio: '2026-11-21' },
+    { id: 'richiamato', stato: 'inviato', dataInvio: '2026-11-01', richiamato: '2026-11-24' },
+    { id: 'accettato', stato: 'accettato', dataInvio: '2026-10-01' },
+    { id: 'esempio', stato: 'inviato', dataInvio: '2026-10-01', esempio: true },
+    { id: 'senzaInvio', stato: 'inviato', data: '2026-11-10' }
+  ];
+  const r = daRichiamare(l, '2026-11-26', 10);
+  assert.deepEqual([...r].sort(), ['senzaInvio', 'vecchio']);
+  assert.equal(daRichiamare(l, '2026-11-26', 30).size, 0);
+});
