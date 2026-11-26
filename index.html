@@ -274,6 +274,18 @@ select.in { appearance: none; -webkit-appearance: none; background-image: linear
 .sugg-i span { font-size: 15px; line-height: 1.35; }
 .sugg-i small { font-size: 13px; color: var(--stone); font-variant-numeric: tabular-nums; }
 @media (hover: hover) { .sugg-i:hover { background: var(--blue-tint); } }
+.qbox { display: flex; gap: 4px; align-items: center; }
+.qbox .in { flex: 1; min-width: 0; }
+.qbox .icon-btn { flex: none; border: 1px solid var(--line); background: var(--card); }
+.ms-stanza { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line-soft); }
+.ms-tit { font-family: var(--display); font-weight: 700; color: var(--walnut); }
+.ms-ris { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ms-res { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; min-height: 64px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); text-align: left; cursor: pointer; transition: background var(--fast) var(--ease); }
+.ms-res b { font-family: var(--display); font-size: 18px; font-variant-numeric: tabular-nums; }
+.ms-res span, .ms-res small { font-size: 13px; color: var(--stone); }
+.ms-res small { color: var(--blue); font-weight: 600; }
+.ms-res:active { background: var(--blue-tint); }
+.ms-res:disabled { opacity: .45; cursor: default; }
 .add-sez { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 14px 0 2px; }
 .add-sez .hint { font-size: 13.5px; color: var(--stone); }
 @media (max-width: 719px) { .add-sez .btn { width: 100%; } .add-sez .chips { width: 100%; } }

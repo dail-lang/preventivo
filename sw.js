@@ -4,7 +4,7 @@
 const VERSION = 'nazifoski-dev';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'firebase-config.js',
-  'js/app.js', 'js/calc.js', 'js/store.js', 'js/auth.js', 'js/pwa.js', 'js/pdf.js', 'js/pdfimport.js', 'js/assets.js', 'js/listino-rimini.js', 'js/versione.js',
+  'js/app.js', 'js/calc.js', 'js/store.js', 'js/auth.js', 'js/pwa.js', 'js/pdf.js', 'js/pdfimport.js', 'js/assets.js', 'js/listino-rimini.js', 'js/versione.js', 'js/misure.js',
   'vendor/pdfmake.min.js', 'vendor/pdf.min.js', 'vendor/pdf.worker.min.js',
   'fonts/inter-latin-400-normal.woff2', 'fonts/inter-latin-500-normal.woff2', 'fonts/inter-latin-600-normal.woff2',
   'fonts/space-grotesk-latin-500-normal.woff2', 'fonts/space-grotesk-latin-700-normal.woff2', 'fonts/ibm-plex-mono-latin-500-normal.woff2',

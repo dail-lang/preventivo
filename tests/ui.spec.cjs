@@ -234,6 +234,42 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2e. Misure delle stanze
+  {
+    const { page, ctx, errors } = await open(browser, 'iPhone 13', seedBase());
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-act="new"]');
+    await page.waitForSelector('[data-act="vMisure"]');
+    const bm = await page.$eval('[data-act="vMisure"]', e => e.getBoundingClientRect());
+    check('misure: pulsante accanto alla quantità, facile da toccare', bm.width >= 44 && bm.height >= 44);
+    await page.click('[data-act="vMisure"]');
+    await page.waitForSelector('#ms');
+    await page.fill('#ms-l-0', '4'); await page.fill('#ms-p-0', '3,5'); await page.fill('#ms-h-0', '2,7');
+    await page.click('[data-act="msApertura"]');
+    await page.fill('#ms-al-0-0', '0,8'); await page.fill('#ms-ah-0-0', '2,1'); await page.fill('#ms-an-0-0', '2');
+    await page.waitForTimeout(100);
+    const txt = await page.textContent('#ms');
+    check('misure: mostra pavimento, soffitto e pareti', txt.includes('14 mq') && txt.includes('37,14 mq'), txt.slice(0, 300));
+    await page.screenshot({ path: path.join(OUT, 'iphone13-misure.png') });
+    await page.click('[data-usa="pareti"]');
+    await page.waitForTimeout(150);
+    const q = await page.inputValue('#sezioni [data-v="qta"]');
+    check('misure: la quantità riceve il calcolo', q === '2*(4+3,5)*2,7-0,8*2,1*2', q);
+    check('misure: mostra il risultato del calcolo', (await page.textContent('#sezioni .q .calc')).includes('37,14'));
+    check('misure: unità impostata a mq', (await page.inputValue('#sezioni [data-v="um"]')) === 'mq');
+    check('misure: finestra chiusa', !(await page.isVisible('#ms')));
+    // due stanze sommate per il pavimento
+    await page.click('[data-act="vMisure"]');
+    await page.fill('#ms-l-0', '4'); await page.fill('#ms-p-0', '3,5');
+    await page.click('[data-act="msStanza"]');
+    await page.fill('#ms-l-1', '3'); await page.fill('#ms-p-1', '3');
+    await page.click('[data-usa="pavimento"]');
+    await page.waitForTimeout(150);
+    check('misure: più stanze sommate', (await page.inputValue('#sezioni [data-v="qta"]')) === '4*3,5+3*3');
+    check('misure: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 3. Numeri doppi
   {
     const s = seedBase();

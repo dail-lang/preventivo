@@ -4,6 +4,7 @@ import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
 import { LISTINO_RIMINI, pianoListino } from './listino-rimini.js';
+import { areeStanza, espressione } from './misure.js';
 import { VERSIONE } from './versione.js';
 import { firebaseConfig } from '../firebase-config.js';
 
@@ -51,6 +52,7 @@ const IC = {
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>',
   doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></svg>',
+  metro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   google: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6h-4a12 12 0 0 0 0 10.8l4-3.1z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.3 6.6l4 3.1c.9-2.8 3.6-4.9 6.7-4.9z"/></svg>'
 };
@@ -392,7 +394,7 @@ function voceHtml(v, si, vi, nv) {
     <span class="vn">${si + 1}.${vi + 1}</span>
     <div class="d"><span class="lbl">Descrizione</span><textarea class="in" rows="1" data-v="desc" enterkeyhint="next" placeholder="Es. Posa pavimento in gres porcellanato 60×60" aria-label="Descrizione voce ${si + 1}.${vi + 1}">${esc(v.desc)}</textarea></div>
     <div class="u"><span class="lbl">U.M.</span><select class="in" data-v="um" aria-label="Unità di misura">${opt(UM.map(u => [u, u]), v.um)}</select></div>
-    <div class="q"><span class="lbl">Quantità</span><input class="in r" data-v="qta" inputmode="decimal" enterkeyhint="next" placeholder="${v.um === 'a corpo' ? '1' : 'es. 3,5*4'}" value="${esc(v.qta)}" aria-label="Quantità"><span class="calc"></span></div>
+    <div class="q"><span class="lbl">Quantità</span><div class="qbox"><input class="in r" data-v="qta" inputmode="decimal" enterkeyhint="next" placeholder="${v.um === 'a corpo' ? '1' : 'es. 3,5*4'}" value="${esc(v.qta)}" aria-label="Quantità"><button class="icon-btn" type="button" data-act="vMisure" aria-label="Calcola dalle misure della stanza" title="Misure">${IC.metro}</button></div><span class="calc"></span></div>
     <div class="p"><span class="lbl">Prezzo €</span><input class="in r" data-v="prezzo" inputmode="decimal" enterkeyhint="done" placeholder="0,00" value="${esc(v.prezzo)}" aria-label="Prezzo unitario"><span class="calc"></span></div>
     <div class="imp"><span class="lbl">Importo</span><span class="iv">—</span></div>
     <div class="tools">
@@ -699,6 +701,7 @@ async function onAct(b) {
     }
     case 'vAdd': sez[si].voci.push({ id: uid(), desc: '', um: 'mq', qta: '', prezzo: '' }); rerender(`[data-sez="${si}"] [data-voce="${sez[si].voci.length - 1}"] textarea`); break;
     case 'vPick': pickListino(si); break;
+    case 'vMisure': apriMisure(si, vi); break;
     case 'vUp': if (vi > 0) { const v = sez[si].voci; [v[vi - 1], v[vi]] = [v[vi], v[vi - 1]]; rerender(); } break;
     case 'vDown': { const v = sez[si].voci; if (vi < v.length - 1) { [v[vi + 1], v[vi]] = [v[vi], v[vi + 1]]; rerender(); } break; }
     case 'vDel': sez[si].voci.splice(vi, 1); rerender(); break;
@@ -780,6 +783,56 @@ function pickListino(si) {
     added++; markDirty();
     b.classList.add('added');
     $('#pk-n').textContent = `${added} ${added === 1 ? 'voce aggiunta' : 'voci aggiunte'}. Ricorda le quantità.`;
+  });
+}
+
+/* ---------- Misure delle stanze ---------- */
+function apriMisure(si, vi) {
+  const stanze = [{ l: '', p: '', h: '2,70', aperture: [] }];
+  const campo = (id, lbl, v, ph) => `<label class="field"><span>${lbl}</span><input class="in" id="${id}" inputmode="decimal" value="${esc(v)}" placeholder="${ph || ''}"></label>`;
+  const disegna = () => {
+    $('#ms-stanze').innerHTML = stanze.map((s, i) => `<div class="ms-stanza" data-st="${i}">
+      ${stanze.length > 1 ? `<div class="ms-tit">Stanza ${i + 1}</div>` : ''}
+      <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">${campo(`ms-l-${i}`, 'Lunghezza m', s.l, 'es. 4')}${campo(`ms-p-${i}`, 'Larghezza m', s.p, 'es. 3,5')}${campo(`ms-h-${i}`, 'Altezza m', s.h)}</div>
+      ${s.aperture.map((a, j) => `<div class="grid ms-ap" style="grid-template-columns:repeat(3,minmax(0,1fr))">${campo(`ms-al-${i}-${j}`, 'Porta/finestra largh.', a.l, '0,8')}${campo(`ms-ah-${i}-${j}`, 'Altezza', a.h, '2,1')}${campo(`ms-an-${i}-${j}`, 'Quante', a.n, '1')}</div>`).join('')}
+      <button class="btn" type="button" data-act="msApertura" data-st="${i}">${IC.plus} Porta o finestra da togliere</button>
+    </div>`).join('');
+    aggiorna();
+  };
+  const leggi = () => stanze.forEach((s, i) => {
+    s.l = $(`#ms-l-${i}`)?.value || ''; s.p = $(`#ms-p-${i}`)?.value || ''; s.h = $(`#ms-h-${i}`)?.value || '';
+    s.aperture.forEach((a, j) => { a.l = $(`#ms-al-${i}-${j}`)?.value || ''; a.h = $(`#ms-ah-${i}-${j}`)?.value || ''; a.n = $(`#ms-an-${i}-${j}`)?.value || ''; });
+  });
+  const aggiorna = () => {
+    leggi();
+    const tot = stanze.map(areeStanza).reduce((t, a) => ({ pavimento: t.pavimento + a.pavimento, soffitto: t.soffitto + a.soffitto, pareti: t.pareti + a.pareti }), { pavimento: 0, soffitto: 0, pareti: 0 });
+    const r = (k, l) => `<button class="ms-res" type="button" data-usa="${k}"${tot[k === 'pareti+soffitto' ? 'pareti' : k] > 0 ? '' : ' disabled'}><span>${l}</span><b>${fmtNum(k === 'pareti+soffitto' ? round2(tot.pareti + tot.soffitto) : tot[k])} mq</b><small>Usa</small></button>`;
+    $('#ms-ris').innerHTML = r('pavimento', 'Pavimento') + r('soffitto', 'Soffitto') + r('pareti', 'Pareti') + r('pareti+soffitto', 'Pareti + soffitto');
+  };
+  openModal(`<div class="sheet" id="ms" role="dialog" aria-modal="true" aria-labelledby="ms-t">
+    <div class="sheet-h"><h2 id="ms-t">Misure della stanza</h2><button class="icon-btn" type="button" data-close="no" aria-label="Chiudi">${IC.x}</button></div>
+    <div class="sheet-b"><div id="ms-stanze"></div>
+      <button class="btn" type="button" data-act="msStanza">${IC.plus} Aggiungi un'altra stanza</button>
+      <div class="ms-ris" id="ms-ris" aria-live="polite"></div>
+      <p class="help" style="margin:0;font-size:13px;color:var(--stone)">Nella quantità resta il calcolo (es. 4*3,5): puoi sempre correggerlo.</p>
+    </div></div>`);
+  disegna();
+  $('#ms').addEventListener('input', aggiorna);
+  $('#ms').addEventListener('click', e => {
+    const b = e.target.closest('[data-act], [data-usa]'); if (!b) return;
+    if (b.dataset.act === 'msApertura') { leggi(); stanze[+b.dataset.st].aperture.push({ l: '', h: '', n: '1' }); disegna(); return; }
+    if (b.dataset.act === 'msStanza') { leggi(); stanze.push({ l: '', p: '', h: stanze[stanze.length - 1].h, aperture: [] }); disegna(); return; }
+    if (b.dataset.usa) {
+      leggi();
+      const expr = espressione(stanze, b.dataset.usa);
+      if (!expr || !S.current) return;
+      const v = S.current.sezioni[si].voci[vi];
+      v.qta = expr; v.um = 'mq';
+      closeModal(true);
+      const row = $(`#sezioni [data-sez="${si}"] [data-voce="${vi}"]`);
+      if (row) { $('[data-v="qta"]', row).value = expr; $('[data-v="um"]', row).value = 'mq'; }
+      updateTotals(); markDirty();
+    }
   });
 }
 
