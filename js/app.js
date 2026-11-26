@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2 } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -575,6 +575,36 @@ function setPath(obj, path, val) {
   for (let i = 0; i < ks.length - 1; i++) { o[ks[i]] = o[ks[i]] || {}; o = o[ks[i]]; }
   o[ks[ks.length - 1]] = val;
 }
+/* Suggerimenti dal listino sotto la descrizione della voce */
+function chiudiSuggerimenti() { $$('#main .sugg').forEach(el => el.remove()); }
+function mostraSuggerimenti(ta) {
+  const cella = ta.parentElement;
+  const lista = suggerisci(ta.value, S.listino, 4);
+  let box = $('.sugg', cella);
+  if (!lista.length) { if (box) box.remove(); return; }
+  if (!box) { box = document.createElement('div'); box.className = 'sugg'; box.setAttribute('role', 'listbox'); box.setAttribute('aria-label', 'Voci simili nel listino'); cella.appendChild(box); }
+  box.innerHTML = lista.map(v => `<button type="button" class="sugg-i" role="option" data-sugg="${esc(v.id)}"><span>${esc(v.desc)}</span><small>${esc(v.um || '')} · ${fmtEur(Number(v.prezzo) || 0)}</small></button>`).join('');
+}
+function usaSuggerimento(b) {
+  const p = S.current; const vEl = b.closest('[data-voce]'); const sEl = b.closest('[data-sez]');
+  const x = S.listino.find(i => i.id === b.dataset.sugg);
+  if (!p || !vEl || !sEl || !x) return;
+  const v = p.sezioni[+sEl.dataset.sez].voci[+vEl.dataset.voce];
+  v.desc = x.desc; v.um = x.um || 'mq'; v.prezzo = String(x.prezzo ?? '').replace('.', ',');
+  if (v.um === 'a corpo' && !String(v.qta || '').trim()) v.qta = '1';
+  const ta = $('[data-v="desc"]', vEl); ta.value = v.desc; autoGrow(ta);
+  $('[data-v="um"]', vEl).value = v.um;
+  const q = $('[data-v="qta"]', vEl); q.value = v.qta || ''; q.placeholder = v.um === 'a corpo' ? '1' : 'es. 3,5*4';
+  $('[data-v="prezzo"]', vEl).value = v.prezzo;
+  chiudiSuggerimenti();
+  updateTotals(); markDirty();
+  q.focus(); try { q.select(); } catch (e) {}
+}
+// il tocco sul suggerimento non deve far perdere il fuoco al campo prima del clic
+document.addEventListener('mousedown', e => { if (e.target.closest('.sugg')) e.preventDefault(); });
+main.addEventListener('focusout', e => { if (e.target.dataset && e.target.dataset.v === 'desc') setTimeout(() => { if (!document.activeElement || !document.activeElement.closest('.sugg')) { const c = e.target.parentElement; const b = c && $('.sugg', c); if (b && document.activeElement !== e.target) b.remove(); } }, 200); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') chiudiSuggerimenti(); });
+
 function fillCliente(nome) {
   const c = S.clienti.find(x => (x.nome || '').trim().toLowerCase() === nome.trim().toLowerCase());
   if (!c) return;
@@ -598,6 +628,7 @@ main.addEventListener('input', e => {
     const si = +t.closest('[data-sez]').dataset.sez, vi = +t.closest('[data-voce]').dataset.voce;
     p.sezioni[si].voci[vi][t.dataset.v] = t.value;
     if (t.tagName === 'TEXTAREA') autoGrow(t);
+    if (t.dataset.v === 'desc') mostraSuggerimenti(t);
     if (t.dataset.v === 'um') { const q = $('[data-v="qta"]', t.closest('.voce')); if (q) q.placeholder = t.value === 'a corpo' ? '1' : 'es. 3,5*4'; }
   } else if (t.dataset.s) {
     p.sezioni[+t.closest('[data-sez]').dataset.sez][t.dataset.s] = t.value;
@@ -689,6 +720,8 @@ document.addEventListener('click', e => {
   if (open) { const p = S.preventivi.find(x => x.id === open.dataset.open); if (p) openEditor(p); return; }
   const li = e.target.closest('#main [data-li]'); if (li) { const x = S.listino.find(i => i.id === li.dataset.li); if (x) editListino(x); return; }
   const cl = e.target.closest('#main [data-cl]'); if (cl) { const x = S.clienti.find(i => i.id === cl.dataset.cl); if (x) editCliente(x); return; }
+  const sg = e.target.closest('#main [data-sugg]');
+  if (sg) { usaSuggerimento(sg); return; }
   const b = e.target.closest('#main [data-act], #totbar [data-act]');
   if (b) onAct(b);
 });

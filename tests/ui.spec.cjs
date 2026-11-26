@@ -185,6 +185,55 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2d. Suggerimenti dal listino mentre si scrive la descrizione
+  {
+    const s = seedBase();
+    s.listino = [
+      { id: 'b', categoria: 'Massetti e pavimenti', desc: 'Posa di pavimento in gres porcellanato fino a 60×60, collante compreso', um: 'mq', prezzo: 35 },
+      { id: 'a', categoria: 'Massetti e pavimenti', desc: 'Fornitura di gres porcellanato di fascia media', um: 'mq', prezzo: 32 },
+      { id: 'z', categoria: 'Smaltimento e pulizia', desc: 'Pulizia finale del cantiere', um: 'a corpo', prezzo: 280 }
+    ];
+    const { page, ctx, errors } = await open(browser, 'iPhone 13', s);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-act="new"]');
+    await page.waitForSelector('#sezioni textarea');
+    await page.click('#sezioni textarea');
+    await page.keyboard.type('pav gres');
+    await page.waitForSelector('.sugg [data-sugg]', { timeout: 3000 }).catch(() => {});
+    const items = await page.$$eval('.sugg [data-sugg]', els => els.map(e => ({ t: e.innerText, h: e.getBoundingClientRect().height })));
+    check('suggerimenti: compaiono mentre scrivi', items.length >= 1 && items[0].t.includes('Posa di pavimento in gres'), JSON.stringify(items));
+    check('suggerimenti: mostrano unità e prezzo', items.length && /mq/.test(items[0].t) && items[0].t.includes('€ 35,00'));
+    check('suggerimenti: facili da toccare (≥ 44px)', items.every(i => i.h >= 44));
+    await page.screenshot({ path: path.join(OUT, 'iphone13-suggerimenti.png') });
+    await page.click('.sugg [data-sugg="b"]').catch(() => {});
+    await page.waitForTimeout(150);
+    check('suggerimenti: il tocco compila descrizione, unità e prezzo', (await page.inputValue('#sezioni textarea')).startsWith('Posa di pavimento in gres') && (await page.inputValue('#sezioni [data-v="um"]')) === 'mq' && (await page.inputValue('#sezioni [data-v="prezzo"]')) === '35');
+    check('suggerimenti: il cursore passa alla quantità', await page.evaluate(() => document.activeElement && document.activeElement.dataset.v === 'qta'));
+    check('suggerimenti: il menu si chiude', !(await page.isVisible('.sugg [data-sugg]')));
+    await page.keyboard.type('10');
+    await page.waitForTimeout(100);
+    check('suggerimenti: totale aggiornato (10 × 35 + IVA)', (await page.textContent('#t-tot')).trim() === '€ 385,00', await page.textContent('#t-tot'));
+    // voce «a corpo»: quantità 1
+    await page.click('[data-act="vAdd"]');
+    const ta = await page.$$('#sezioni textarea');
+    await ta[1].click();
+    await page.keyboard.type('pulizia');
+    await page.waitForSelector('.sugg [data-sugg="z"]', { timeout: 3000 }).catch(() => {});
+    await page.click('.sugg [data-sugg="z"]').catch(() => {});
+    await page.waitForTimeout(150);
+    const q2 = await page.$$eval('#sezioni [data-v="qta"]', e => e[1] && e[1].value);
+    check('suggerimenti: voce «a corpo» con quantità 1', q2 === '1', q2);
+    // descrizione già identica: niente menu
+    await page.click('[data-act="vAdd"]');
+    const ta3 = (await page.$$('#sezioni textarea'))[2];
+    await ta3.click();
+    await page.keyboard.type('Pulizia finale del cantiere');
+    await page.waitForTimeout(200);
+    check('suggerimenti: niente menu se la descrizione è già uguale a una voce', !(await page.isVisible('.sugg [data-sugg]')));
+    check('suggerimenti: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 3. Numeri doppi
   {
     const s = seedBase();

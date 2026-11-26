@@ -267,6 +267,13 @@ select.in { appearance: none; -webkit-appearance: none; background-image: linear
   .sez-h .st { margin-left: 26px; margin-right: auto; }
   .sez-f .btn { flex: 1 1 0; }
 }
+.sugg { margin-top: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
+.sugg-i { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 48px; padding: 10px 12px; border: 0; border-top: 1px solid var(--line-soft); background: none; text-align: left; cursor: pointer; transition: background var(--fast) var(--ease); }
+.sugg-i:first-child { border-top: 0; }
+.sugg-i:active, .sugg-i:focus-visible { background: var(--blue-tint); }
+.sugg-i span { font-size: 15px; line-height: 1.35; }
+.sugg-i small { font-size: 13px; color: var(--stone); font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .sugg-i:hover { background: var(--blue-tint); } }
 .add-sez { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 14px 0 2px; }
 .add-sez .hint { font-size: 13.5px; color: var(--stone); }
 @media (max-width: 719px) { .add-sez .btn { width: 100%; } .add-sez .chips { width: 100%; } }

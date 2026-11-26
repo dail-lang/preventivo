@@ -55,3 +55,41 @@ test('duplicati: stesso anno e numero, esclusi esempi e altri anni', () => {
   ];
   assert.deepEqual([...duplicati(list)].sort(), ['a', 'b']);
 });
+
+import { suggerisci } from '../js/calc.js';
+const L = [
+  { id: 'a', desc: 'Fornitura di gres porcellanato di fascia media', um: 'mq', prezzo: 32 },
+  { id: 'b', desc: 'Posa di pavimento in gres porcellanato fino a 60×60, collante compreso', um: 'mq', prezzo: 35 },
+  { id: 'c', desc: 'Tinteggiatura pareti e soffitti con idropittura traspirante, due mani', um: 'mq', prezzo: 9 },
+  { id: 'd', desc: 'Pavimentazione esterna in autobloccanti', um: 'mq', prezzo: 40 },
+  { id: 'e', desc: '', um: 'mq', prezzo: 1 },
+  { id: 'f', desc: 'Città: rifacimento facciata', um: 'mq', prezzo: 22 }
+];
+
+test('suggerisci: parole parziali in qualsiasi ordine, la migliore per prima', () => {
+  const r = suggerisci('pav gres', L).map(x => x.id);
+  assert.equal(r[0], 'b');
+  assert.ok(!r.includes('c'));
+  assert.deepEqual(suggerisci('gres pav', L).map(x => x.id)[0], 'b');
+});
+
+test('suggerisci: maiuscole e accenti non contano', () => {
+  assert.equal(suggerisci('TINTEGGIATURA', L)[0].id, 'c');
+  assert.equal(suggerisci('citta facc', L)[0].id, 'f');
+});
+
+test('suggerisci: almeno 3 lettere, al massimo n risultati, niente voci vuote', () => {
+  assert.deepEqual(suggerisci('pa', L), []);
+  assert.ok(suggerisci('mq', L).length === 0 || suggerisci('mq', L).every(x => x.desc));
+  assert.equal(suggerisci('gres', L, 1).length, 1);
+  assert.ok(suggerisci('gres', L).every(x => x.desc));
+});
+
+test('suggerisci: inizio di parola vale più di metà parola', () => {
+  const r = suggerisci('pav', L).map(x => x.id);
+  assert.deepEqual(r.slice(0, 2).sort(), ['b', 'd']);
+});
+
+test('suggerisci: se la descrizione è già identica a una voce, niente suggerimenti', () => {
+  assert.deepEqual(suggerisci(L[2].desc, L), []);
+});

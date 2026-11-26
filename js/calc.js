@@ -99,3 +99,32 @@ export function duplicati(list) {
   }
   return out;
 }
+
+/** Testo senza maiuscole né accenti, diviso in parole. */
+const normal = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9×]+/g, ' ').trim();
+
+/**
+ * Voci del listino simili a quello che si sta scrivendo: ogni parola cercata deve comparire
+ * (meglio se all'inizio di una parola); a parità di punteggio, descrizione più corta.
+ */
+export function suggerisci(testo, listino, n = 4) {
+  const q = normal(testo);
+  if (q.replace(/\s/g, '').length < 3) return [];
+  const parole = q.split(' ').filter(Boolean);
+  if ((listino || []).some(v => v.desc && normal(v.desc) === q)) return [];
+  const out = [];
+  for (const v of listino || []) {
+    if (!v || !v.desc) continue;
+    const d = normal(v.desc);
+    const dp = d.split(' ');
+    let score = 0, ok = true;
+    for (const p of parole) {
+      if (dp.some(w => w.startsWith(p))) score += dp[0].startsWith(p) ? 3 : 2;
+      else if (d.includes(p)) score += 1;
+      else { ok = false; break; }
+    }
+    if (ok) out.push({ v, score, len: d.length });
+  }
+  out.sort((a, b) => b.score - a.score || a.len - b.len);
+  return out.slice(0, n).map(x => x.v);
+}
