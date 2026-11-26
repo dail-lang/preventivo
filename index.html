@@ -297,6 +297,26 @@ select.in { appearance: none; -webkit-appearance: none; background-image: linear
 .sugg-i span { font-size: 15px; line-height: 1.35; }
 .sugg-i small { font-size: 13px; color: var(--stone); font-variant-numeric: tabular-nums; }
 @media (hover: hover) { .sugg-i:hover { background: var(--blue-tint); } }
+#pagamenti h2 small { font-weight: 400; }
+.pg-sum { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 12px; border-radius: 10px; background: var(--paper-alt); font-size: 14.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.pg-sum b { color: var(--ink); }
+.scaduta { display: inline-block; margin-left: 6px; font-size: 11.5px; font-style: normal; font-weight: 600; padding: 1px 7px; border-radius: 4px; background: var(--bad-tint); color: var(--bad); font-family: var(--body, inherit); }
+.row .n .scaduta { display: block; margin: 4px 0 0; width: max-content; }
+.rate { display: flex; flex-direction: column; }
+.rata { display: grid; grid-template-columns: minmax(0, 2fr) 70px 120px 150px 170px 44px; gap: 8px; align-items: end; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.rata.pagata .in { background: var(--ok-tint); }
+.rata.late [data-r="scadenza"] { border-color: var(--bad); color: var(--bad); }
+.rata .rq > span { display: block; }
+.rata .rq .btn { width: 100%; }
+.rata .pgd { display: flex; gap: 4px; align-items: center; }
+.rata .pgd .in { flex: 1; min-width: 0; }
+.pg-act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+@media (max-width: 899px) {
+  .rata { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .rata .rd { grid-column: 1 / 6; grid-row: 1; } .rata .rx { grid-column: 6; grid-row: 1; justify-self: end; }
+  .rata .rp { grid-column: 1 / 3; } .rata .ri { grid-column: 3 / 7; }
+  .rata .rs { grid-column: 1 / 4; } .rata .rq { grid-column: 4 / 7; }
+}
 .rev-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .rev-bar .btn { flex: 1 1 auto; }
 .rv-item { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--line-soft); }

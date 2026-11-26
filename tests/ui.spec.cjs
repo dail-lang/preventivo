@@ -327,6 +327,39 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2i. Acconti e saldo
+  {
+    const s = seedBase();
+    s.impostazioni = [{ ...s.impostazioni[0], rateStandard: "30% all'accettazione, 40% a metà lavori, 30% a fine lavori" }];
+    s.preventivi.push({ ...fx.acorpo, id: 'altro', numero: 8, stato: 'accettato' });
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('#pagamenti [data-act="rStandard"]').catch(() => {});
+    await page.waitForTimeout(300);
+    const imp = await page.$$eval('#pagamenti [data-r="importo"]', a => a.map(x => x.value)).catch(() => []);
+    check('pagamenti: rate standard 30/40/30 sul totale', imp.join(' | ') === '1.410,09 | 1.880,12 | 1.410,09', imp.join(' | '));
+    const sum0 = await page.textContent('#pg-sum').catch(() => '');
+    check('pagamenti: da incassare tutto il totale', sum0.includes('Da incassare € 4.700,30'), sum0);
+    await page.click('#pagamenti [data-rata="0"] [data-act="rPagata"]').catch(() => {});
+    await page.waitForTimeout(300);
+    const sum1 = await page.textContent('#pg-sum').catch(() => '');
+    check('pagamenti: segnata pagata → incassato e resto', sum1.includes('Incassato € 1.410,09') && sum1.includes('Da incassare € 3.290,21'), sum1);
+    const ieri = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+    await page.fill('#pagamenti [data-rata="1"] [data-r="scadenza"]', ieri).catch(() => {});
+    await page.waitForTimeout(900);
+    await page.click('[data-act="back"]');
+    await page.waitForTimeout(900);
+    check('pagamenti: in elenco «Rata scaduta»', !!(await page.$('[data-open="acorpo"] .scaduta')));
+    await page.click('[data-filter="incassare"].chip').catch(() => {});
+    await page.waitForTimeout(300);
+    const ids = await page.$$eval('#rows [data-open]', a => a.map(x => x.dataset.open)).catch(() => []);
+    check('pagamenti: filtro «Da incassare»', ids.join() === 'acorpo', ids.join());
+    check('pagamenti: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

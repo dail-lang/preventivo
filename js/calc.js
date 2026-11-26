@@ -214,3 +214,44 @@ export function calcMargine(p) {
   const margine = round2(ricavo - costi);
   return { costi, ricavo, margine, perc: ricavo > 0 ? Math.round(margine / ricavo * 1000) / 10 : 0, conCosto: vociConCosto > 0, vociConCosto, voci };
 }
+
+/* Acconti e saldo: rate in % del totale (IVA compresa) o a importo fisso. */
+export const RATE_BASE = "30% all'accettazione, 40% a metà lavori, 30% a fine lavori";
+const idRata = () => 'r' + Math.random().toString(36).slice(2, 9);
+const percDi = r => (r.perc === '' || r.perc === null || r.perc === undefined ? NaN : Number(r.perc));
+/** Importi delle rate in % non pagate sul totale; se tutte sono in % e fanno 100, l'ultima non pagata assorbe i centesimi. */
+export function ricalcolaRate(rate, totale) {
+  const out = (rate || []).map(r => ({ ...r }));
+  const libere = out.filter(r => !r.pagata && isFinite(percDi(r)));
+  for (const r of libere) r.importo = round2(totale * percDi(r) / 100);
+  const tutteInPerc = out.length && out.every(r => isFinite(percDi(r)));
+  const sommaPerc = round2(out.reduce((t, r) => t + (percDi(r) || 0), 0));
+  if (libere.length && tutteInPerc && sommaPerc === 100) {
+    const ultima = libere[libere.length - 1];
+    const altre = out.filter(r => r !== ultima).reduce((t, r) => t + (Number(r.importo) || 0), 0);
+    ultima.importo = round2(totale - altre);
+  }
+  return out;
+}
+/** «30% all'accettazione, 40% a metà lavori, 30% a fine lavori» → rate. Le parti senza % vengono ignorate. */
+export function rateDaTesto(testo, totale) {
+  const rate = [];
+  for (const parte of String(testo || '').split(/[,;\n]+/)) {
+    const m = parte.match(/(\d+(?:[.,]\d+)?)\s*%\s*(.*)/);
+    if (!m) continue;
+    let desc = m[2].trim().replace(/^(di|del|da)\s+/i, '');
+    desc = desc ? desc[0].toUpperCase() + desc.slice(1) : 'Rata ' + (rate.length + 1);
+    rate.push({ id: idRata(), desc, perc: Number(m[1].replace(',', '.')), importo: 0, scadenza: '', pagata: '' });
+  }
+  return ricalcolaRate(rate, totale);
+}
+/** Incassato, da incassare (sul totale IVA compresa), rate scadute non pagate e prossima rata da incassare. */
+export function statoPagamenti(p, oggiIso) {
+  const rate = p.rate || [];
+  const totale = calc(p).totale;
+  const incassato = round2(rate.filter(r => r.pagata).reduce((t, r) => t + (Number(r.importo) || 0), 0));
+  const aperte = rate.filter(r => !r.pagata);
+  const scadute = aperte.filter(r => r.scadenza && r.scadenza < oggiIso).length;
+  const conData = aperte.filter(r => r.scadenza).sort((a, b) => a.scadenza.localeCompare(b.scadenza));
+  return { incassato, daIncassare: round2(Math.max(0, totale - incassato)), scadute, prossima: conData[0] || aperte[0] || null };
+}

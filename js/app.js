@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf, rateDaTesto, ricalcolaRate, statoPagamenti, RATE_BASE } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -22,7 +22,7 @@ const SEZ_RAPIDE = ['Demolizioni e rimozioni', 'Impianto idraulico', 'Impianto e
 export const AZIENDA_BASE = {
   ragione: 'Impresa Edile Nazifoski', indirizzo: 'Via Villagrande 24, Rimini (RN)', telefono: '+39 352 203 7037',
   email: 'info@nazifoski.it', sito: 'www.nazifoski.it', piva: '03286630409', rea: 'RN-285905', iban: '',
-  ivaDefault: 10, tempi: '', pagamento: '', note: '', firma: false, giorniRichiamo: 10
+  ivaDefault: 10, tempi: '', pagamento: '', note: '', firma: false, giorniRichiamo: 10, rateStandard: RATE_BASE
 };
 
 /* ---------- Stato ---------- */
@@ -316,8 +316,9 @@ function renderLista(fromData) {
   const dups = duplicati(all);
   const oggi = today();
   const richiamo = daRichiamare(all, oggi, Number(S.azienda.giorniRichiamo) || 10);
+  const incassare = new Set(all.filter(p => daIncassare(p, oggi)).map(p => p.id));
   const q = S.q.trim().toLowerCase();
-  let rows = sorted(all).filter(p => S.filter === 'tutti' || (S.filter === 'richiamare' ? richiamo.has(p.id) : p.stato === S.filter));
+  let rows = sorted(all).filter(p => S.filter === 'tutti' || (S.filter === 'richiamare' ? richiamo.has(p.id) : S.filter === 'incassare' ? incassare.has(p.id) : p.stato === S.filter));
   if (q) rows = rows.filter(p => [numStr(p), p.cliente?.nome, p.oggetto, p.cantiere].join(' ').toLowerCase().includes(q));
   const sum = (k, color, label, list, word) => `<button class="sum" data-filter="${k}" type="button" aria-pressed="${S.filter === k}"><span class="k"><i style="background:var(${color})"></i>${label}</span><span class="v">${fmtEur(sumOf(list))}</span><span class="c">${list.length} ${word(list.length)}</span></button>`;
   main.innerHTML = `
@@ -336,7 +337,7 @@ function renderLista(fromData) {
     <div class="toolbar">
       <input class="in search" id="q" type="search" enterkeyhint="search" placeholder="Cerca per cliente, lavoro o numero" value="${esc(S.q)}" aria-label="Cerca preventivi">
       <div class="chips" role="group" aria-label="Filtra per stato">
-        ${[['tutti', 'Tutti'], ...STATI, ['richiamare', 'Da richiamare']].map(([k, l]) => `<button class="chip" type="button" data-filter="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join('')}
+        ${[['tutti', 'Tutti'], ...STATI, ['richiamare', 'Da richiamare'], ['incassare', 'Da incassare']].map(([k, l]) => `<button class="chip" type="button" data-filter="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join('')}
       </div>
     </div>
     <div class="list" id="rows">
@@ -361,11 +362,17 @@ function rowHtml(p, dup, oggi, dentro) {
     </div></div>`;
   }
   return `<button class="row" type="button" data-open="${esc(p.id)}">
-    <span class="n">${esc(numStr(p))}${dup ? '<span class="dup">Numero già usato</span>' : ''}</span>
+    <span class="n">${esc(numStr(p))}${dup ? '<span class="dup">Numero già usato</span>' : ''}${p.rate && p.rate.length && p.stato !== 'rifiutato' && statoPagamenti(p, today()).scadute ? '<span class="scaduta">Rata scaduta</span>' : ''}</span>
     <span class="who"><b>${esc(p.cliente?.nome || 'Cliente senza nome')}</b><span>${esc(p.oggetto || p.cantiere || 'Lavori da descrivere')}</span></span>
     <span class="st"><span class="pill st-${sk}">${sl}</span></span>
     <span class="amt">${fmtEur(totaleDi(p))}<small${oggi ? ' class="tardi"' : ''}>${esc(oggi ? quando(p, oggi) : fmtDate(p.data))}</small></span>
   </button>`;
+}
+/** Lavoro con rate da incassare: accettato (o con un acconto già preso) e non ancora saldato. */
+function daIncassare(p, oggi) {
+  if (p.esempio || !p.rate || !p.rate.length || p.stato === 'rifiutato') return false;
+  if (p.stato !== 'accettato' && !p.rate.some(r => r.pagata)) return false;
+  return statoPagamenti(p, oggi).daIncassare > 0.005;
 }
 function quando(p, oggi) {
   const n = giorniDa(p.richiamato || p.dataInvio || p.data, oggi);
@@ -521,7 +528,11 @@ function renderEditor() {
         <label class="field"><span>Modalità di pagamento</span><textarea class="in" id="f-pag" data-f="pagamento" placeholder="Es. 30% all'accettazione, saldo a fine lavori">${esc(p.pagamento)}</textarea></label>
         <label class="field" style="grid-column: 1 / -1"><span>Note ed esclusioni</span><textarea class="in" id="f-note" data-f="note" placeholder="Es. Sono esclusi i lavori non indicati nel presente preventivo">${esc(p.note)}</textarea></label>
       </div>
-    </section>`;
+    </section>
+    ${p.esempio ? '' : `<section class="card" id="pagamenti">
+      <h2>Pagamenti <small>acconti e saldo, solo per voi: il PDF non cambia</small></h2>
+      <div id="pg-body">${pagamentiHtml(p)}</div>
+    </section>`}`;
   $('#totbar').innerHTML = `<div class="totbar"><div class="wrap">
     <div class="t sm" id="t-lordo-w"><span>Lavori</span><b id="t-lordo">—</b></div>
     <div class="t sm" id="t-sc-w"><span>Sconto</span><b id="t-sc">—</b></div>
@@ -605,6 +616,7 @@ function updateTotals() {
   set('t-ival', `IVA ${c.aliq}%`);
   set('t-iva', fmtEur(c.iva));
   set('t-tot', fmtEur(c.totale));
+  aggiornaPagamenti();
   const m = calcMargine(p);
   const mw = $('#t-marg-w');
   if (mw) {
@@ -679,6 +691,14 @@ main.addEventListener('input', e => {
     if (t.dataset.v === 'um') { const q = $('[data-v="qta"]', t.closest('.voce')); if (q) q.placeholder = t.value === 'a corpo' ? '1' : 'es. 3,5*4'; }
   } else if (t.dataset.s) {
     p.sezioni[+t.closest('[data-sez]').dataset.sez][t.dataset.s] = t.value;
+  } else if (t.dataset.r) {
+    const r = p.rate && p.rate[+t.closest('[data-rata]').dataset.rata]; if (!r) return;
+    const k = t.dataset.r;
+    if (k === 'perc') { const v = num(t.value); r.perc = t.value.trim() && isFinite(v) ? v : ''; }
+    else if (k === 'importo') { const v = num(t.value); r.importo = isFinite(v) ? round2(v) : 0; r.perc = ''; const pe = $('[data-r="perc"]', t.closest('[data-rata]')); if (pe) pe.value = ''; }
+    else r[k] = t.value;
+    if (k === 'pagata' && !t.value) { r.pagata = ''; ridisegnaPagamenti(); }
+    if (k === 'scadenza') t.closest('[data-rata]').classList.toggle('late', !r.pagata && !!r.scadenza && r.scadenza < today());
   } else return;
   updateTotals(); markDirty();
 });
@@ -731,6 +751,30 @@ async function onAct(b) {
       break;
     }
     case 'revisioni': flushEditor(); apriRevisioni(); break;
+    case 'rStandard': {
+      const testo = S.azienda.rateStandard || RATE_BASE;
+      const nuove = rateDaTesto(testo, calc(p).totale);
+      if (!nuove.length) { toast('Nelle Impostazioni scrivi le rate con le percentuali, es. 30% acconto, 70% saldo'); break; }
+      if ((p.rate || []).length && !(await confirmBox('Sostituire le rate?', 'Le rate scritte finora vengono sostituite da quelle standard.', 'Sostituisci'))) break;
+      p.rate = nuove; ridisegnaPagamenti(); markDirty(); break;
+    }
+    case 'rAdd': {
+      const st = statoPagamenti(p, today());
+      const giaPrevisto = (p.rate || []).filter(r => !r.pagata).reduce((t, r) => t + (Number(r.importo) || 0), 0);
+      (p.rate = p.rate || []).push({ id: 'r' + uid(), desc: p.rate.length ? 'Saldo' : 'Acconto', perc: '', importo: round2(Math.max(0, st.daIncassare - giaPrevisto)), scadenza: '', pagata: '' });
+      ridisegnaPagamenti(); markDirty();
+      const ins = $$('#pagamenti [data-r="desc"]'); if (ins.length) ins[ins.length - 1].focus();
+      break;
+    }
+    case 'rPagata': case 'rNonPagata': case 'rDel': {
+      const i = +b.closest('[data-rata]').dataset.rata; const r = p.rate && p.rate[i]; if (!r) break;
+      if (act === 'rPagata') r.pagata = today();
+      if (act === 'rNonPagata') r.pagata = '';
+      if (act === 'rDel') p.rate.splice(i, 1);
+      aggiornaPagamenti(); ridisegnaPagamenti(); markDirty();
+      if (act === 'rPagata') toast(`Segnata pagata: ${fmtEur(Number(r.importo) || 0)}`);
+      break;
+    }
     case 'renumber': {
       p.numero = nextNumero(S.preventivi.filter(x => x.id !== p.id), Number(p.anno));
       $('.ed-top h1').textContent = numStr(p); const f = $('#f-num'); if (f) f.value = p.numero;
@@ -740,7 +784,7 @@ async function onAct(b) {
       flushEditor();
       const anno = new Date().getFullYear();
       const np = { ...clone(p), id: uid(), anno, numero: nextNumero(S.preventivi, anno), data: today(), stato: 'bozza', esempio: false, creato: new Date().toISOString() };
-      for (const k of ['rev', 'revisioni', 'firma', 'dataInvio', 'richiamato']) delete np[k];
+      for (const k of ['rev', 'revisioni', 'firma', 'dataInvio', 'richiamato', 'rate']) delete np[k];
       np.sezioni.forEach(s => { s.id = uid(); s.voci.forEach(v => { v.id = uid(); }); });
       openEditor(np); saveCurrent(); toast('Copia creata: preventivo ' + numStr(np)); break;
     }
@@ -901,6 +945,43 @@ function apriMisure(si, vi) {
       updateTotals(); markDirty();
     }
   });
+}
+
+/* ---------- Pagamenti ---------- */
+const eur2 = n => (isFinite(n) ? fmtNum(n, 2) : '');
+function pagamentiHtml(p) {
+  const rate = p.rate || [];
+  const st = statoPagamenti(p, today());
+  const riga = (r, i) => `<div class="rata${r.pagata ? ' pagata' : ''}${!r.pagata && r.scadenza && r.scadenza < today() ? ' late' : ''}" data-rata="${i}">
+    <label class="field rd"><span>Descrizione</span><input class="in" data-r="desc" value="${esc(r.desc)}" placeholder="Es. Acconto"></label>
+    <label class="field rp"><span>%</span><input class="in r" data-r="perc" inputmode="decimal" value="${esc(r.perc === '' || r.perc == null ? '' : String(r.perc).replace('.', ','))}" placeholder="—"></label>
+    <label class="field ri"><span>Importo €</span><input class="in r" data-r="importo" inputmode="decimal" value="${esc(eur2(Number(r.importo)))}"></label>
+    <label class="field rs"><span>Scadenza</span><input class="in" type="date" data-r="scadenza" value="${esc(r.scadenza || '')}"></label>
+    <div class="field rq"><span>Pagata il</span>${r.pagata
+      ? `<div class="pgd"><input class="in" type="date" data-r="pagata" value="${esc(r.pagata)}"><button class="icon-btn" type="button" data-act="rNonPagata" aria-label="Segna come non pagata">${IC.x}</button></div>`
+      : `<button class="btn" type="button" data-act="rPagata">${IC.check} Pagata oggi</button>`}</div>
+    <button class="icon-btn del rx" type="button" data-act="rDel" aria-label="Togli rata">${IC.trash}</button>
+  </div>`;
+  return `<div class="pg-sum" id="pg-sum">${pgSum(st)}</div>
+    <div class="rate">${rate.map(riga).join('')}</div>
+    <div class="pg-act">
+      <button class="btn" type="button" data-act="rStandard">Rate standard</button>
+      <button class="btn" type="button" data-act="rAdd">${IC.plus} Aggiungi rata</button>
+    </div>
+    ${rate.length ? '' : `<p class="help" style="margin:8px 0 0;font-size:13px;color:var(--stone)">«Rate standard»: ${esc(S.azienda.rateStandard || RATE_BASE)} (si cambia in Impostazioni).</p>`}`;
+}
+function pgSum(st) {
+  return `<span>Incassato <b>${fmtEur(st.incassato)}</b></span><span>Da incassare <b>${fmtEur(st.daIncassare)}</b></span>${st.prossima ? `<span>Prossima: <b>${esc(st.prossima.desc || 'rata')}</b> ${fmtEur(Number(st.prossima.importo) || 0)}${st.prossima.scadenza ? ' entro il ' + fmtDate(st.prossima.scadenza) : ''}${st.scadute ? ' <em class="scaduta">scaduta</em>' : ''}</span>` : ''}`;
+}
+function ridisegnaPagamenti() { const b = $('#pg-body'); if (b && S.current) b.innerHTML = pagamentiHtml(S.current); }
+function aggiornaPagamenti() {
+  const p = S.current; if (!p || !p.rate || !p.rate.length) { const s = $('#pg-sum'); if (s && p) s.innerHTML = pgSum(statoPagamenti(p, today())); return; }
+  p.rate = ricalcolaRate(p.rate, calc(p).totale);
+  $$('#pagamenti [data-rata]').forEach(el => {
+    const r = p.rate[+el.dataset.rata]; const inp = $('[data-r="importo"]', el);
+    if (r && inp && document.activeElement !== inp) inp.value = eur2(Number(r.importo));
+  });
+  const s = $('#pg-sum'); if (s) s.innerHTML = pgSum(statoPagamenti(p, today()));
 }
 
 /* ---------- Revisioni precedenti ---------- */
@@ -1110,6 +1191,7 @@ function renderImpostazioni() {
           ${t('tempi', 'Tempi di esecuzione', 'Es. Da concordare in base al calendario dei lavori')}
           ${t('pagamento', 'Modalità di pagamento', 'Es. 30% all\'accettazione, saldo a fine lavori')}
           <div style="grid-column:1/-1">${t('note', 'Note ed esclusioni', 'Es. Sono esclusi i lavori non indicati nel presente preventivo')}</div>
+          <div style="grid-column:1/-1">${t('rateStandard', 'Rate standard (acconti e saldo)', RATE_BASE)}<p class="help" style="margin:6px 0 0">Percentuali separate da virgole: il pulsante «Rate standard» del preventivo le calcola sul totale IVA compresa.</p></div>
           <div style="grid-column:1/-1">${t('messaggio', 'Messaggio per WhatsApp', MESSAGGIO_BASE)}<p class="help" style="margin:6px 0 0">Si compila da solo: {nome} cliente, {numero} preventivo, {oggetto}, {totale}, {impresa}, {telefono}. Se lo lasci vuoto si usa quello di esempio.</p></div>
         </div>
         <label class="check" style="margin-top:8px"><input type="checkbox" id="s-firma" data-set="firma"${a.firma ? ' checked' : ''}> Aggiungi in fondo al PDF gli spazi per le firme</label>
