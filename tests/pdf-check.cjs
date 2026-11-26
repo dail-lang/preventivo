@@ -80,6 +80,9 @@ async function makePdf(browser, libs, p, opts = {}) {
   app2.id = 'linee'; app2.sezioni[2].voci[0].desc = elenco;
   fixtures.linee = app2;
 
+  // costi interni su alcune voci: non devono mai finire nel PDF
+  fixtures.appartamento.sezioni.forEach(s => s.voci.forEach((v, i) => { if (i % 2 === 0) v.costo = '7777,77'; }));
+
   for (const name of ['acorpo', 'appartamento', 'totale', 'lungo', 'linee']) {
     const p = fixtures[name];
     const r = await makePdf(browser, libs, p, { buttons: name === 'acorpo' });
@@ -108,6 +111,7 @@ async function makePdf(browser, libs, p, opts = {}) {
       check('appartamento: riepilogo', has(r.text, 'riepilogo', true));
       check('appartamento: sconto 5%', has(r.text, 'Sconto 5%'));
       check('appartamento: numero voce 1.1', /\b1\.1\b/.test(r.text));
+      check('appartamento: niente costi né margine nel PDF', !has(r.text, 'costo', true) && !has(r.text, 'margine', true) && !has(r.text, '7.777,77') && !has(r.text, '7777'));
       for (let i = 1; i <= r.pages; i++) {
         const t = r.pageText(i);
         if (/^\s*\d+\.\d+\s/m.test(t)) check(`appartamento: intestazione tabella a pagina ${i}`, has(t, 'DESCRIZIONE'));

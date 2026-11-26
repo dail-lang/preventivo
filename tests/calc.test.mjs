@@ -129,3 +129,27 @@ test('daRichiamare: inviati da troppi giorni, non richiamati da poco', () => {
   assert.deepEqual([...r].sort(), ['senzaInvio', 'vecchio']);
   assert.equal(daRichiamare(l, '2026-11-26', 30).size, 0);
 });
+
+import { calcMargine } from '../js/calc.js';
+test('calcMargine: sull\'imponibile dopo lo sconto, solo voci con costo', () => {
+  const p = { sconto: { tipo: '%', valore: '10' }, iva: 10, sezioni: [{ voci: [
+    { um: 'mq', qta: '10', prezzo: '100', costo: '60' },
+    { um: 'a corpo', qta: '', prezzo: '200', costo: '' }
+  ] }] };
+  // costo solo sulla prima voce: il margine riguarda solo lei (sconto 10% ripartito), non la voce senza costo
+  const m = calcMargine(p);
+  assert.equal(m.ricavo, 900);
+  assert.equal(m.costi, 600);
+  assert.equal(m.margine, 300);
+  assert.equal(m.perc, 33.3);
+  assert.equal(m.conCosto, true);
+  assert.equal(m.vociConCosto, 1);
+  assert.equal(m.voci, 2);
+  // tutte le voci con costo: ricavo = imponibile
+  p.sezioni[0].voci[1].costo = '50';
+  const t = calcMargine(p);
+  assert.equal(t.ricavo, 1080); assert.equal(t.costi, 650); assert.equal(t.margine, 430); assert.equal(t.vociConCosto, 2);
+  assert.equal(calcMargine({ sezioni: [{ voci: [{ um: 'mq', qta: '2', prezzo: '5' }] }] }).conCosto, false);
+  assert.equal(calcMargine({ sezioni: [{ voci: [{ um: 'mq', qta: '2', prezzo: '5', costo: 'abc' }] }] }).conCosto, false);
+  assert.equal(calcMargine({ sezioni: [{ voci: [{ um: 'mq', qta: '3*2', prezzo: '5', costo: '1,5' }] }] }).costi, 9);
+});

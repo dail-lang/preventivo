@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -413,6 +413,7 @@ function voceHtml(v, si, vi, nv) {
     <div class="q"><span class="lbl">Quantità</span><div class="qbox"><input class="in r" data-v="qta" inputmode="decimal" enterkeyhint="next" placeholder="${v.um === 'a corpo' ? '1' : 'es. 3,5*4'}" value="${esc(v.qta)}" aria-label="Quantità"><button class="icon-btn" type="button" data-act="vMisure" aria-label="Calcola dalle misure della stanza" title="Misure">${IC.metro}</button></div><span class="calc"></span></div>
     <div class="p"><span class="lbl">Prezzo €</span><input class="in r" data-v="prezzo" inputmode="decimal" enterkeyhint="done" placeholder="0,00" value="${esc(v.prezzo)}" aria-label="Prezzo unitario"><span class="calc"></span></div>
     <div class="imp"><span class="lbl">Importo</span><span class="iv">—</span></div>
+    <div class="vc"><label><span>Costo tuo €</span><input class="in r" data-v="costo" inputmode="decimal" enterkeyhint="done" placeholder="facoltativo" value="${esc(v.costo ?? '')}" aria-label="Costo unitario (non va nel PDF)"></label><span class="mg"></span></div>
     <div class="tools">
       <button class="icon-btn" type="button" data-act="vSave" aria-label="Salva nel listino">${IC.star}</button>
       <button class="icon-btn" type="button" data-act="vUp" aria-label="Sposta su"${vi === 0 ? ' disabled' : ''}>${IC.up}</button>
@@ -525,7 +526,8 @@ function renderEditor() {
     <div class="t sm" id="t-lordo-w"><span>Lavori</span><b id="t-lordo">—</b></div>
     <div class="t sm" id="t-sc-w"><span>Sconto</span><b id="t-sc">—</b></div>
     <div class="t mid"><span>Imponibile</span><b id="t-imp">—</b></div>
-    <div class="t"><span id="t-ival">IVA</span><b id="t-iva">—</b></div>
+    <div class="t iva"><span id="t-ival">IVA</span><b id="t-iva">—</b></div>
+    <div class="t marg" id="t-marg-w" hidden><span id="t-marg-l">Margine</span><b id="t-marg">—</b></div>
     <div class="t big"><span>Totale</span><b id="t-tot">—</b></div>
     <button class="btn primary" type="button" data-act="preview">${IC.doc} PDF</button>
   </div></div>`;
@@ -581,6 +583,18 @@ function updateTotals() {
         el.classList.remove('bad'); el.textContent = isExpr(r) ? '= ' + fmtNum(val) : '';
       };
       show(qc, v.qta, cv.q); show(pc, v.prezzo, cv.pr);
+      const mg = $('.mg', vEl);
+      if (mg) {
+        const k = num(v.costo);
+        if (!String(v.costo ?? '').trim()) { mg.textContent = ''; mg.className = 'mg'; }
+        else if (!isFinite(k)) { mg.textContent = 'Controlla il costo'; mg.className = 'mg bad'; }
+        else {
+          const unit = isFinite(cv.pr) ? cv.pr - k : NaN;
+          const q = isFinite(cv.q) ? cv.q : 0;
+          mg.textContent = isFinite(unit) ? `margine ${fmtEur(round2(unit * q))} (${cv.pr > 0 ? fmtNum(Math.round(unit / cv.pr * 1000) / 10, 1) : '0'}%)` : '';
+          mg.className = 'mg' + (unit < 0 ? ' bad' : '');
+        }
+      }
     });
   });
   const set = (id, t) => { const el = $('#' + id); if (el) el.textContent = t; };
@@ -591,6 +605,14 @@ function updateTotals() {
   set('t-ival', `IVA ${c.aliq}%`);
   set('t-iva', fmtEur(c.iva));
   set('t-tot', fmtEur(c.totale));
+  const m = calcMargine(p);
+  const mw = $('#t-marg-w');
+  if (mw) {
+    mw.hidden = !m.conCosto; mw.classList.toggle('neg', m.margine < 0);
+    $('#t-marg').innerHTML = `${fmtEur(m.margine)}<small> · ${fmtNum(m.perc, 1)}%</small>`;
+    set('t-marg-l', m.vociConCosto < m.voci ? `Margine (${m.vociConCosto}/${m.voci} voci)` : 'Margine');
+    mw.title = m.vociConCosto < m.voci ? `Solo per voi, non va nel PDF. Calcolato sulle ${m.vociConCosto} voci su ${m.voci} che hanno il costo.` : 'Solo per voi: non compare nel PDF';
+  }
 }
 function setPath(obj, path, val) {
   const ks = path.split('.'); let o = obj;
@@ -613,11 +635,13 @@ function usaSuggerimento(b) {
   if (!p || !vEl || !sEl || !x) return;
   const v = p.sezioni[+sEl.dataset.sez].voci[+vEl.dataset.voce];
   v.desc = x.desc; v.um = x.um || 'mq'; v.prezzo = String(x.prezzo ?? '').replace('.', ',');
+  if (x.costo !== undefined && x.costo !== '' && x.costo !== null) v.costo = String(x.costo).replace('.', ',');
   if (v.um === 'a corpo' && !String(v.qta || '').trim()) v.qta = '1';
   const ta = $('[data-v="desc"]', vEl); ta.value = v.desc; autoGrow(ta);
   $('[data-v="um"]', vEl).value = v.um;
   const q = $('[data-v="qta"]', vEl); q.value = v.qta || ''; q.placeholder = v.um === 'a corpo' ? '1' : 'es. 3,5*4';
   $('[data-v="prezzo"]', vEl).value = v.prezzo;
+  const ce = $('[data-v="costo"]', vEl); if (ce) ce.value = v.costo ?? '';
   chiudiSuggerimenti();
   updateTotals(); markDirty();
   q.focus(); try { q.select(); } catch (e) {}
@@ -751,7 +775,8 @@ async function onAct(b) {
       if (!v.desc.trim()) { toast('Scrivi prima la descrizione della voce'); break; }
       const ex = S.listino.find(x => (x.desc || '').trim().toLowerCase() === v.desc.trim().toLowerCase());
       const pr = num(v.prezzo);
-      write('listino', ex ? ex.id : uid(), { desc: v.desc.trim(), um: v.um, prezzo: isFinite(pr) ? round2(pr) : 0, categoria: (ex && ex.categoria) || sez[si].titolo || 'Varie' });
+      const kv = num(v.costo);
+      write('listino', ex ? ex.id : uid(), { desc: v.desc.trim(), um: v.um, prezzo: isFinite(pr) ? round2(pr) : 0, categoria: (ex && ex.categoria) || sez[si].titolo || 'Varie', ...(String(v.costo ?? '').trim() && isFinite(kv) ? { costo: round2(kv) } : {}) });
       toast(ex ? 'Prezzo aggiornato nel listino' : 'Voce salvata nel listino'); break;
     }
   }
@@ -820,6 +845,7 @@ function pickListino(si) {
     const voci = S.current.sezioni[si].voci;
     const empty = voci.length === 1 && !voci[0].desc && !voci[0].qta && !voci[0].prezzo;
     const nv = { id: uid(), desc: x.desc, um: x.um || 'mq', qta: x.um === 'a corpo' ? '1' : '', prezzo: String(x.prezzo ?? '').replace('.', ',') };
+    if (x.costo !== undefined && x.costo !== '' && x.costo !== null) nv.costo = String(x.costo).replace('.', ',');
     if (empty) voci[0] = nv; else voci.push(nv);
     added++; markDirty();
     b.classList.add('added');
@@ -963,6 +989,7 @@ function editListino(x) {
       <div class="grid">
         <label class="field"><span>Unità di misura</span><select class="in" id="lf-u">${opt(UM.map(u => [u, u]), x.um)}</select></label>
         <label class="field"><span>Prezzo (€)</span><input class="in" id="lf-p" inputmode="decimal" value="${esc(String(x.prezzo ?? '').replace('.', ','))}"></label>
+        <label class="field"><span>Costo tuo (€, facoltativo)</span><input class="in" id="lf-k" inputmode="decimal" placeholder="non va nel PDF" value="${esc(String(x.costo ?? '').replace('.', ','))}"></label>
       </div>
       <label class="field"><span>Categoria</span><input class="in" id="lf-c" list="lf-cats" value="${esc(x.categoria)}" placeholder="Es. Tinteggiatura"><datalist id="lf-cats">${cats.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist></label>
     </div>
@@ -973,7 +1000,12 @@ function editListino(x) {
     const desc = $('#lf-d').value.trim(); if (!desc) { toast('Scrivi la descrizione'); return; }
     const pr = num($('#lf-p').value);
     if ($('#lf-p').value.trim() && !isFinite(pr)) { toast('Controlla il prezzo'); return; }
-    write('listino', isNew ? uid() : x.id, { desc, um: $('#lf-u').value, prezzo: isFinite(pr) ? round2(pr) : 0, categoria: $('#lf-c').value.trim() || 'Varie' });
+    const kr = $('#lf-k').value.trim(); const k = num(kr);
+    if (kr && !isFinite(k)) { toast('Controlla il costo'); return; }
+    const dati = { ...(isNew ? {} : x), desc, um: $('#lf-u').value, prezzo: isFinite(pr) ? round2(pr) : 0, categoria: $('#lf-c').value.trim() || 'Varie' };
+    delete dati.id;
+    if (kr) dati.costo = round2(k); else delete dati.costo;
+    write('listino', isNew ? uid() : x.id, dati);
     closeModal(true); toast('Listino aggiornato');
   });
   const del = $('#lf-del');

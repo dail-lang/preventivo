@@ -193,3 +193,24 @@ export function ripristinaRevisione(p, n, oggiIso) {
   q.data = oggiIso;
   return q;
 }
+
+/**
+ * Margine senza IVA, dopo lo sconto. Riguarda solo le voci con un costo valido (lo sconto è ripartito in proporzione):
+ * con il costo su tutte le voci il ricavo è l'imponibile. Mai nel PDF.
+ */
+export function calcMargine(p) {
+  const c = calc(p);
+  const quota = c.lordo > 0 ? c.imponibile / c.lordo : 1;
+  let costi = 0, importi = 0, vociConCosto = 0, voci = 0;
+  (p.sezioni || []).forEach((s, si) => (s.voci || []).forEach((v, vi) => {
+    voci++;
+    if (!String(v.costo ?? '').trim()) return;
+    const k = num(v.costo), q = qtaOf(v);
+    if (!isFinite(k) || !isFinite(q)) return;
+    costi += q * k; importi += c.sez[si].voci[vi].imp; vociConCosto++;
+  }));
+  costi = round2(costi);
+  const ricavo = vociConCosto === voci ? c.imponibile : round2(importi * quota);
+  const margine = round2(ricavo - costi);
+  return { costi, ricavo, margine, perc: ricavo > 0 ? Math.round(margine / ricavo * 1000) / 10 : 0, conCosto: vociConCosto > 0, vociConCosto, voci };
+}

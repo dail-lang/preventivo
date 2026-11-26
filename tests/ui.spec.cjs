@@ -301,6 +301,32 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2h. Margine (costi interni)
+  {
+    const s = seedBase();
+    s.listino = [{ id: 'l1', categoria: 'Tinteggiatura', desc: 'Tinteggiatura pareti, due mani', um: 'mq', prezzo: 8, costo: 5 }];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    check('margine: nessun margine senza costi', await page.isHidden('#t-marg-w').catch(() => false));
+    const costo = '[data-sez="0"] [data-voce="0"] [data-v="costo"]';
+    await page.fill(costo, '3000').catch(() => {});
+    await page.waitForTimeout(300);
+    const vm = await page.textContent('[data-sez="0"] [data-voce="0"] .mg').catch(() => '');
+    check('margine: sulla voce «margine € 1.273,00 (29,8%)»', vm.includes('margine € 1.273,00 (29,8%)'), vm);
+    check('margine: nella barra dei totali', (await page.isVisible('#t-marg-w').catch(() => false)) && (await page.textContent('#t-marg').catch(() => '')).includes('€ 1.273,00'));
+    // dal listino si copia anche il costo
+    await page.click('[data-sez="0"] [data-act="vAdd"]').catch(() => {});
+    const d1 = '[data-sez="0"] [data-voce="1"] [data-v="desc"]';
+    await page.fill(d1, 'tinteg').catch(() => {});
+    await page.click('[data-sugg]').catch(() => {});
+    await page.waitForTimeout(300);
+    check('margine: il suggerimento dal listino copia il costo', (await page.inputValue('[data-sez="0"] [data-voce="1"] [data-v="costo"]').catch(() => '')) === '5');
+    check('margine: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();
