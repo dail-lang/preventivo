@@ -270,6 +270,37 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2g. Revisioni
+  {
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', seedBase());
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('[data-act="revisione"]').catch(() => {});
+    await page.waitForTimeout(300);
+    check('revisioni: titolo «2026/007 rev. 2»', (await page.textContent('.ed-top h1')).includes('2026/007 rev. 2'));
+    await page.click('[data-act="revisioni"]').catch(() => {});
+    await page.waitForSelector('#rv', { timeout: 3000 }).catch(() => {});
+    const rv = await page.textContent('#rv').catch(() => '');
+    check('revisioni: elenco con la prima versione e il suo totale', rv.includes('2026/007 (prima versione)') && rv.includes('€ 4.700,30'), rv);
+    await page.click('#rv [data-act="rvVedi"]').catch(() => {});
+    await page.waitForSelector('#pv-actions:not([hidden])', { timeout: 15000 }).catch(() => {});
+    check('revisioni: la versione vecchia si apre in anteprima (sola lettura)', !!(await page.$('#pv-actions:not([hidden])')) && (await page.getAttribute('#pv-dl', 'download').catch(() => '') || '').includes('2026-007'));
+    await page.click('#pv-close').catch(() => {});
+    await page.waitForTimeout(300);
+    await page.click('[data-act="revisioni"]').catch(() => {});
+    await page.waitForSelector('#rv', { timeout: 3000 }).catch(() => {});
+    await page.click('#rv [data-act="rvRipristina"]').catch(() => {});
+    await page.click('#modal [data-close="ok"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('revisioni: ripristinare crea la rev. 3', (await page.textContent('.ed-top h1')).includes('rev. 3'));
+    await page.click('[data-act="back"]');
+    await page.waitForTimeout(900);
+    check('revisioni: in elenco «2026/007 rev. 3»', (await page.textContent('[data-open="acorpo"]')).includes('2026/007 rev. 3'));
+    check('revisioni: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

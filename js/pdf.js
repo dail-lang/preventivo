@@ -22,7 +22,7 @@ export async function caricaPdfJs() {
 
 export function fileName(p) {
   const cli = (p.cliente?.nome || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return `Preventivo ${p.esempio ? 'esempio' : p.anno + '-' + String(p.numero).padStart(3, '0')}${cli ? ' ' + cli : ''}.pdf`;
+  return `Preventivo ${p.esempio ? 'esempio' : p.anno + '-' + String(p.numero).padStart(3, '0') + (Number(p.rev) > 1 ? ' rev' + p.rev : '')}${cli ? ' ' + cli : ''}.pdf`;
 }
 
 /** Restituisce il PDF come Uint8Array. */
@@ -146,7 +146,7 @@ export function buildDoc(p, a, logoB64) {
   const c = calc(p);
   const mode = p.dettaglio || 'voci';
   const withPrices = mode === 'voci';
-  const numero = p.esempio ? 'ESEMPIO' : `${p.anno}/${String(p.numero).padStart(3, '0')}`;
+  const numero = p.esempio ? 'ESEMPIO' : numStr(p);
   const cl = p.cliente || {};
   const label = t => ({ text: t.toUpperCase(), fontSize: 6.8, bold: true, color: C.soft, characterSpacing: 0.8, margin: [0, 0, 0, 3] });
   const rule = (color, w, gapAbove, m) => ({ table: { widths: ['*'], body: [[{ text: ' ', fontSize: 1, margin: [0, gapAbove, 0, 0] }]] }, layout: { hLineWidth: i => (i === 1 ? w : 0), vLineWidth: () => 0, hLineColor: () => color, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 }, margin: m });

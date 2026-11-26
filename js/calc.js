@@ -12,7 +12,7 @@ const pad2 = n => String(n).padStart(2, '0');
 export const isoDate = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 export const today = () => isoDate(new Date());
 export const fmtDate = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
-export const numStr = p => (p.esempio ? 'Esempio' : `${p.anno}/${String(p.numero).padStart(3, '0')}`);
+export const numStr = p => (p.esempio ? 'Esempio' : `${p.anno}/${String(p.numero).padStart(3, '0')}${Number(p.rev) > 1 ? ' rev. ' + p.rev : ''}`);
 
 /** Calcolatrice: "3,5*4 + 2x1,2", "1.250,50", parentesi. Niente eval. NaN se non valida. */
 export function num(expr) {
@@ -165,4 +165,31 @@ export function daRichiamare(list, oggiIso, giorni) {
     if (da && giorniDa(da, oggiIso) >= giorni) out.add(p.id);
   }
   return out;
+}
+
+/* Revisioni: copie delle versioni precedenti dentro il preventivo stesso. */
+const CAMPI_REV = ['data', 'cliente', 'cantiere', 'oggetto', 'sezioni', 'sconto', 'iva', 'dettaglio', 'tempi', 'pagamento', 'note'];
+const copia = x => JSON.parse(JSON.stringify(x));
+export const MAX_REVISIONI = 10;
+/** Salva la versione attuale tra le revisioni (max 10) e apre la successiva: torna bozza, va rifirmata e rispedita. */
+export function nuovaRevisione(p, oggiIso) {
+  const q = copia(p);
+  const rev = Number(p.rev) || 1;
+  const contenuto = {};
+  for (const k of CAMPI_REV) if (p[k] !== undefined) contenuto[k] = copia(p[k]);
+  q.revisioni = [...(q.revisioni || []), { n: rev, data: p.data || '', totale: calc(p).totale, contenuto }].slice(-MAX_REVISIONI);
+  q.rev = rev + 1;
+  q.stato = 'bozza';
+  q.data = oggiIso;
+  delete q.firma; delete q.dataInvio; delete q.richiamato;
+  return q;
+}
+/** Riporta il contenuto della revisione n: la versione attuale viene salvata e quella ripristinata diventa una nuova revisione. */
+export function ripristinaRevisione(p, n, oggiIso) {
+  const r = (p.revisioni || []).find(x => x.n === n);
+  if (!r) return null;
+  const q = nuovaRevisione(p, oggiIso);
+  Object.assign(q, copia(r.contenuto));
+  q.data = oggiIso;
+  return q;
 }

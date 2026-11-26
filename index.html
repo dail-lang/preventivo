@@ -284,6 +284,12 @@ select.in { appearance: none; -webkit-appearance: none; background-image: linear
 .sugg-i span { font-size: 15px; line-height: 1.35; }
 .sugg-i small { font-size: 13px; color: var(--stone); font-variant-numeric: tabular-nums; }
 @media (hover: hover) { .sugg-i:hover { background: var(--blue-tint); } }
+.rev-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.rev-bar .btn { flex: 1 1 auto; }
+.rv-item { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--line-soft); }
+.rv-i { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rv-i span { color: var(--stone); font-size: 14px; font-variant-numeric: tabular-nums; }
+.rv-a { display: flex; gap: 8px; flex-wrap: wrap; }
 .qbox { display: flex; gap: 4px; align-items: center; }
 .qbox .in { flex: 1; min-width: 0; }
 .qbox .icon-btn { flex: none; border: 1px solid var(--line); background: var(--card); }

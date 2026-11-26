@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -468,6 +468,10 @@ function renderEditor() {
         <label class="field"><span>Data</span><input class="in" id="f-data" type="date" data-f="data" value="${esc(p.data)}"></label>
         <label class="field"><span>Stato</span><select class="in" id="f-stato" data-f="stato">${opt(STATI, p.stato)}</select></label>
       </div>
+      ${p.esempio ? '' : `<div class="rev-bar">
+        <button class="btn" type="button" data-act="revisione">${IC.plus} Nuova revisione</button>
+        ${(p.revisioni || []).length ? `<button class="btn" type="button" data-act="revisioni">Revisioni precedenti (${p.revisioni.length})</button>` : ''}
+      </div>`}
     </section>
     <section class="card">
       <h2>Cliente <small>se è in rubrica, i dati si compilano da soli</small></h2>
@@ -693,6 +697,16 @@ async function onAct(b) {
       break;
     }
     case 'preview': flushEditor(); openPreview(); break;
+    case 'revisione': {
+      flushEditor();
+      const firmato = !!p.firma;
+      if (p.stato !== 'bozza' && !(await confirmBox('Fare una nuova revisione?', `La versione attuale resta salvata in «Revisioni precedenti». Il preventivo torna «Bozza»${firmato ? ' e la firma del cliente va rifatta' : ''}.`, 'Nuova revisione'))) break;
+      S.current = nuovaRevisione(p, today());
+      saveCurrent(); renderEditor();
+      toast('Ora stai modificando ' + numStr(S.current));
+      break;
+    }
+    case 'revisioni': flushEditor(); apriRevisioni(); break;
     case 'renumber': {
       p.numero = nextNumero(S.preventivi.filter(x => x.id !== p.id), Number(p.anno));
       $('.ed-top h1').textContent = numStr(p); const f = $('#f-num'); if (f) f.value = p.numero;
@@ -702,6 +716,7 @@ async function onAct(b) {
       flushEditor();
       const anno = new Date().getFullYear();
       const np = { ...clone(p), id: uid(), anno, numero: nextNumero(S.preventivi, anno), data: today(), stato: 'bozza', esempio: false, creato: new Date().toISOString() };
+      for (const k of ['rev', 'revisioni', 'firma', 'dataInvio', 'richiamato']) delete np[k];
       np.sezioni.forEach(s => { s.id = uid(); s.voci.forEach(v => { v.id = uid(); }); });
       openEditor(np); saveCurrent(); toast('Copia creata: preventivo ' + numStr(np)); break;
     }
@@ -862,14 +877,45 @@ function apriMisure(si, vi) {
   });
 }
 
+/* ---------- Revisioni precedenti ---------- */
+function apriRevisioni() {
+  const p = S.current; if (!p) return;
+  const lista = (p.revisioni || []).slice().reverse();
+  openModal(`<div class="sheet" id="rv" role="dialog" aria-modal="true" aria-labelledby="rv-t">
+    <div class="sheet-h"><h2 id="rv-t">Revisioni precedenti</h2><button class="icon-btn" type="button" data-close="no" aria-label="Chiudi">${IC.x}</button></div>
+    <div class="sheet-b">
+      <p class="help" style="margin:0;font-size:14px;color:var(--stone)">Ora stai lavorando su ${esc(numStr(p))}. Le versioni vecchie si possono rivedere in PDF o rimettere al posto di quella attuale.</p>
+      ${lista.map(r => `<div class="rv-item">
+        <div class="rv-i"><b>${esc(numStr({ ...p, rev: r.n }))}${r.n === 1 ? ' (prima versione)' : ''}</b><span>${esc(fmtDate(r.data))} · ${fmtEur(r.totale)}</span></div>
+        <div class="rv-a"><button class="btn" type="button" data-act="rvVedi" data-n="${r.n}">${IC.doc} Vedi PDF</button><button class="btn" type="button" data-act="rvRipristina" data-n="${r.n}">Ripristina</button></div>
+      </div>`).join('')}
+    </div></div>`);
+  $('#rv').addEventListener('click', async e => {
+    const b = e.target.closest('[data-act]'); if (!b || !S.current) return;
+    const n = Number(b.dataset.n);
+    const r = (S.current.revisioni || []).find(x => x.n === n); if (!r) return;
+    if (b.dataset.act === 'rvVedi') {
+      closeModal(true);
+      openPreview({ ...clone(S.current), ...clone(r.contenuto), rev: n, stato: 'archiviata', firma: undefined });
+    }
+    if (b.dataset.act === 'rvRipristina') {
+      if (!(await confirmBox(`Ripristinare la ${n === 1 ? 'prima versione' : 'rev. ' + n}?`, 'La versione attuale resta salvata tra le revisioni precedenti.', 'Ripristina'))) return;
+      const q = ripristinaRevisione(S.current, n, today()); if (!q) return;
+      closeModal(true);
+      S.current = q; saveCurrent(); renderEditor();
+      toast('Ripristinata: ora è ' + numStr(q));
+    }
+  });
+}
+
 /* ---------- Anteprima PDF ---------- */
-async function openPreview() {
-  const p = clone(S.current);
+async function openPreview(versione) {
+  const p = versione || clone(S.current);
   try {
     const m = await import('./pdf.js');
     openLayer('preview', () => m.closePreview(true));
     const segnaInviato = () => {
-      if (!S.current || S.current.id !== p.id || S.current.stato !== 'bozza') return false;
+      if (versione || !S.current || S.current.id !== p.id || S.current.stato !== 'bozza') return false;
       S.current.stato = 'inviato'; S.current.dataInvio = today(); saveCurrent();
       const sel = $('#f-stato'); if (sel) sel.value = 'inviato';
       return true;
