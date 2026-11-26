@@ -326,7 +326,9 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await page.evaluate(() => {
       window.__shared = null;
       navigator.canShare = d => !!(d && d.files && d.files.length);
-      navigator.share = async d => { window.__shared = { n: d.files.length, name: d.files[0].name, type: d.files[0].type, size: d.files[0].size }; };
+      navigator.share = async d => { window.__shared = { n: d.files.length, name: d.files[0].name, type: d.files[0].type, size: d.files[0].size, text: d.text || '' }; };
+      window.__copiato = null;
+      try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async t => { window.__copiato = t; } } }); } catch (e) {}
     });
     await page.waitForSelector('[data-open]');
     await page.click('[data-open="acorpo"]');
@@ -339,10 +341,33 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await page.waitForTimeout(200);
     const sh = await page.evaluate(() => window.__shared);
     check('condividi: passa il PDF con il nome giusto', sh && sh.n === 1 && sh.type === 'application/pdf' && sh.name === 'Preventivo 2026-007 Cliente di prova.pdf' && sh.size > 10000, JSON.stringify(sh));
+    check('whatsapp: insieme al PDF parte il messaggio già scritto', sh && sh.text.startsWith('Buongiorno Cliente di prova, le invio il preventivo n. 2026/007'), sh && sh.text);
+    check('whatsapp: il messaggio è anche copiato', (await page.evaluate(() => window.__copiato || '')).startsWith('Buongiorno Cliente di prova'));
+    await page.click('#pv-close');
+    await page.click('[data-act="back"]');
+    await page.waitForTimeout(800);
+    check('whatsapp: dopo la condivisione il preventivo è «Inviato»', (await page.textContent('[data-open="acorpo"]')).includes('Inviato'));
+    await page.click('[data-open="acorpo"]');
+    await page.click('.totbar [data-act="preview"]');
+    await page.waitForSelector('#pv-share:not([hidden])', { timeout: 30000 }).catch(() => {});
     await page.screenshot({ path: path.join(OUT, 'iphone13-anteprima.png') });
     await page.click('#pv-close');
     check('condividi: «indietro» torna all\'editor', await page.isVisible('.totbar'));
     check('condividi: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  // 7. WhatsApp dove il telefono non condivide file: pulsante con il messaggio
+  {
+    const sd = seedBase(); sd.preventivi = [{ ...fx.acorpo, cliente: { nome: 'Cliente di prova', telefono: '333 123 4567' } }];
+    const { page, ctx } = await open(browser, 'Pixel 7', sd);
+    await page.evaluate(() => { try { delete Navigator.prototype.canShare; delete Navigator.prototype.share; } catch (e) {} });
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('.totbar [data-act="preview"]');
+    await page.waitForSelector('#pv-actions:not([hidden])', { timeout: 30000 }).catch(() => {});
+    const href = await page.getAttribute('#pv-wa', 'href').catch(() => null);
+    check('whatsapp senza condivisione file: pulsante con numero e messaggio', !!href && href.startsWith('https://wa.me/393331234567?text=') && decodeURIComponent(href).includes('Buongiorno Cliente di prova'), href);
     await ctx.close();
   }
 

@@ -1,5 +1,5 @@
 // PDF del preventivo: impaginazione (pdfmake), anteprima (pdf.js) e pulsanti Condividi / Apri / Scarica.
-import { calc, fmtEur, fmtNum, fmtDate, num, numStr } from './calc.js';
+import { calc, fmtEur, fmtNum, fmtDate, num, numStr, telefonoWa } from './calc.js';
 
 const VENDOR = { pdfmake: 'vendor/pdfmake.min.js', pdfjs: 'vendor/pdf.min.js', worker: 'vendor/pdf.worker.min.js' };
 const loaded = {};
@@ -44,6 +44,7 @@ const ICON = {
   share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13M7 8l5-5 5 5M5 13v7h14v-7"/></svg>',
   open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></svg>',
   dl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  wa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.8 7L4 20l1.1-4A8 8 0 1 1 20 12z"/></svg>',
   sent: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>'
 };
 
@@ -57,7 +58,7 @@ export function closePreview(fromBack) {
   if (!fromBack && s && s.onClose) s.onClose();
 }
 
-export async function openPreview(p, a, { onClose, onSent, toast } = {}) {
+export async function openPreview(p, a, { onClose, onSent, onShared, toast, messaggio = '', telefono = '' } = {}) {
   const pv = $('#preview');
   const name = fileName(p);
   state = { onClose, url: null };
@@ -71,6 +72,7 @@ export async function openPreview(p, a, { onClose, onSent, toast } = {}) {
         <button class="btn primary" type="button" id="pv-share" hidden>${ICON.share} Condividi</button>
         <a class="btn" id="pv-open" target="_blank" rel="noopener">${ICON.open} Apri</a>
         <a class="btn" id="pv-dl" download="${esc(name)}">${ICON.dl} Scarica</a>
+        <a class="btn" id="pv-wa" target="_blank" rel="noopener" hidden>${ICON.wa} WhatsApp</a>
         ${p.stato === 'bozza' && !p.esempio ? `<button class="btn" type="button" id="pv-sent">${ICON.sent} Inviato</button>` : ''}
       </div>
     </div></div>
@@ -91,11 +93,21 @@ export async function openPreview(p, a, { onClose, onSent, toast } = {}) {
       share.hidden = false;
       $('#pv-dl').classList.remove('primary');
       share.onclick = async () => {
-        try { await navigator.share({ files: [file], title: name }); }
-        catch (e) { if (e && e.name !== 'AbortError' && toast) toast('Condivisione non riuscita: usa «Scarica».'); }
+        // WhatsApp su iPhone a volte ignora il testo quando arriva con un file: lo copiamo anche negli appunti
+        if (messaggio) { try { navigator.clipboard && navigator.clipboard.writeText(messaggio).catch(() => {}); } catch (e) {} }
+        try {
+          await navigator.share(messaggio ? { files: [file], title: name, text: messaggio } : { files: [file], title: name });
+          if (onShared) onShared();
+          if (messaggio && toast) toast('Messaggio copiato: incollalo se WhatsApp non lo mostra');
+        } catch (e) { if (e && e.name !== 'AbortError' && toast) toast('Condivisione non riuscita: usa «Scarica».'); }
       };
     } else {
       $('#pv-dl').classList.add('primary');
+      const wa = $('#pv-wa');
+      const n = telefonoWa(telefono);
+      wa.href = `https://wa.me/${n}?text=${encodeURIComponent(messaggio || '')}`;
+      wa.hidden = false;
+      wa.onclick = () => { if (onShared) onShared(); };
     }
     const sent = $('#pv-sent');
     if (sent) sent.onclick = () => { sent.remove(); if (onSent) onSent(); };

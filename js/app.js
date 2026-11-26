@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -842,9 +842,18 @@ async function openPreview() {
   try {
     const m = await import('./pdf.js');
     openLayer('preview', () => m.closePreview(true));
+    const segnaInviato = () => {
+      if (!S.current || S.current.id !== p.id || S.current.stato !== 'bozza') return false;
+      S.current.stato = 'inviato'; S.current.dataInvio = today(); saveCurrent();
+      const sel = $('#f-stato'); if (sel) sel.value = 'inviato';
+      return true;
+    };
     await m.openPreview(p, S.azienda, {
       onClose: () => closeLayer('preview'),
-      onSent: () => { if (S.current && S.current.id === p.id) { S.current.stato = 'inviato'; saveCurrent(); const sel = $('#f-stato'); if (sel) sel.value = 'inviato'; } toast('Preventivo segnato come inviato'); },
+      onSent: () => { segnaInviato(); toast('Preventivo segnato come inviato'); },
+      onShared: () => { segnaInviato(); },
+      messaggio: messaggioInvio(S.azienda.messaggio || MESSAGGIO_BASE, p, S.azienda),
+      telefono: (p.cliente && p.cliente.telefono) || '',
       toast
     });
   } catch (e) { console.error(e); toast('Non riesco ad aprire l\'anteprima. Riprova.'); }
@@ -996,6 +1005,7 @@ function renderImpostazioni() {
           ${t('tempi', 'Tempi di esecuzione', 'Es. Da concordare in base al calendario dei lavori')}
           ${t('pagamento', 'Modalità di pagamento', 'Es. 30% all\'accettazione, saldo a fine lavori')}
           <div style="grid-column:1/-1">${t('note', 'Note ed esclusioni', 'Es. Sono esclusi i lavori non indicati nel presente preventivo')}</div>
+          <div style="grid-column:1/-1">${t('messaggio', 'Messaggio per WhatsApp', MESSAGGIO_BASE)}<p class="help" style="margin:6px 0 0">Si compila da solo: {nome} cliente, {numero} preventivo, {oggetto}, {totale}, {impresa}, {telefono}. Se lo lasci vuoto si usa quello di esempio.</p></div>
         </div>
         <label class="check" style="margin-top:8px"><input type="checkbox" id="s-firma" data-set="firma"${a.firma ? ' checked' : ''}> Aggiungi in fondo al PDF gli spazi per le firme</label>
       </section>

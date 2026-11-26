@@ -93,3 +93,19 @@ test('suggerisci: inizio di parola vale più di metà parola', () => {
 test('suggerisci: se la descrizione è già identica a una voce, niente suggerimenti', () => {
   assert.deepEqual(suggerisci(L[2].desc, L), []);
 });
+
+import { messaggioInvio, telefonoWa, MESSAGGIO_BASE } from '../js/calc.js';
+test('messaggioInvio: segnaposto compilati', () => {
+  const p = { anno: 2026, numero: 7, oggetto: 'Rifacimento bagno', cliente: { nome: 'Mario Rossi' }, sezioni: [{ voci: [{ um: 'a corpo', qta: '', prezzo: '1000' }] }], iva: 10, sconto: {} };
+  const a = { ragione: 'Impresa Edile Nazifoski', telefono: '+39 352 203 7037' };
+  assert.equal(messaggioInvio(MESSAGGIO_BASE, p, a), 'Buongiorno Mario Rossi, le invio il preventivo n. 2026/007 per Rifacimento bagno. Resto a disposizione. Impresa Edile Nazifoski – +39 352 203 7037');
+  assert.equal(messaggioInvio('Totale {totale}', p, a), 'Totale € 1.100,00');
+  assert.ok(messaggioInvio(MESSAGGIO_BASE, { ...p, cliente: {} }, a).startsWith('Buongiorno, le invio'));
+  assert.ok(!messaggioInvio(MESSAGGIO_BASE, { ...p, oggetto: '' }, a).includes(' per .'));
+});
+test('telefonoWa: numero per WhatsApp', () => {
+  assert.equal(telefonoWa('333 123 4567'), '393331234567');
+  assert.equal(telefonoWa('+39 333 123 4567'), '393331234567');
+  assert.equal(telefonoWa('0541 123456'), '390541123456');
+  assert.equal(telefonoWa(''), '');
+});

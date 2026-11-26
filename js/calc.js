@@ -128,3 +128,24 @@ export function suggerisci(testo, listino, n = 4) {
   out.sort((a, b) => b.score - a.score || a.len - b.len);
   return out.slice(0, n).map(x => x.v);
 }
+
+/** Messaggio che accompagna il PDF su WhatsApp. Segnaposto: {nome} {numero} {oggetto} {totale} {impresa} {telefono}. */
+export const MESSAGGIO_BASE = 'Buongiorno {nome}, le invio il preventivo n. {numero} per {oggetto}. Resto a disposizione. {impresa} – {telefono}';
+export function messaggioInvio(modello, p, a = {}) {
+  const val = {
+    nome: (p.cliente && p.cliente.nome || '').trim(), numero: numStr(p), oggetto: (p.oggetto || '').trim(),
+    totale: fmtEur(calc(p).totale), impresa: a.ragione || '', telefono: a.telefono || ''
+  };
+  let s = String(modello || MESSAGGIO_BASE);
+  if (!val.nome) s = s.replace(/\s*\{nome\}/g, '');
+  if (!val.oggetto) s = s.replace(/\s*(per|di|relativo a)?\s*\{oggetto\}/gi, '');
+  return s.replace(/\{(nome|numero|oggetto|totale|impresa|telefono)\}/g, (m, k) => val[k]).replace(/\s+([,.])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+}
+/** Numero per wa.me: solo cifre, con il prefisso 39 per i numeri italiani. */
+export function telefonoWa(tel) {
+  let d = String(tel || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (!d.startsWith('39') || d.length <= 10) d = (d.length <= 10 ? '39' : '') + d;
+  return d;
+}
