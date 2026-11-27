@@ -53,6 +53,7 @@ const IC = {
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>',
   doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></svg>',
   metro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
   tel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
@@ -176,7 +177,7 @@ async function boot() {
     // Senza configurazione Firebase: dati «solo su questo telefono», senza accesso.
     const kind = TEST ? 'test' : app ? 'online' : 'locale';
     auth = await createAuth(kind === 'test' ? 'fake' : kind === 'online' ? 'firebase' : 'locale', { app, user: seed.user, emulator: EMU });
-    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni } });
+    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto } });
     store.onSync(s => { S.sync = s; renderSync(); });
     auth.onUser(onUser);
   } catch (e) {
@@ -280,7 +281,7 @@ function write(coll, id, data) {
 /* ---------- Navigazione ---------- */
 const main = $('#main');
 function go(view) {
-  if (S.view === 'editor' && view !== 'editor') { flushEditor(); S.current = null; closeLayer('editor'); }
+  if (S.view === 'editor' && view !== 'editor') { flushEditor(); S.current = null; closeLayer('editor'); seguiFoto(null); }
   S.view = view;
   render();
   window.scrollTo(0, 0);
@@ -395,7 +396,7 @@ function nuovoPreventivo(cliente) {
   };
 }
 function openEditor(p) {
-  if (S.view === 'editor') flushEditor(); else openLayer('editor', () => { flushEditor(); S.current = null; S.view = 'lista'; render(); });
+  if (S.view === 'editor') flushEditor(); else openLayer('editor', () => { flushEditor(); S.current = null; seguiFoto(null); S.view = 'lista'; render(); });
   S.current = clone(p); S.base = p.modificato || null; S.seen = false; S.gone = false;
   S.view = 'editor'; render(); window.scrollTo(0, 0);
 }
@@ -455,6 +456,7 @@ function dupNote(p) {
 }
 function renderEditor() {
   const p = S.current;
+  seguiFoto(p.esempio ? null : p.id);
   const sez = p.sezioni;
   main.innerHTML = `
     <div class="ed-top">
@@ -530,6 +532,12 @@ function renderEditor() {
         <label class="field" style="grid-column: 1 / -1"><span>Note ed esclusioni</span><textarea class="in" id="f-note" data-f="note" placeholder="Es. Sono esclusi i lavori non indicati nel presente preventivo">${esc(p.note)}</textarea></label>
       </div>
     </section>
+    ${p.esempio ? '' : `<section class="card" id="foto">
+      <h2>Foto del sopralluogo <small>restano nell'app, non vanno nel PDF</small></h2>
+      <div class="foto-grid" id="foto-grid">${fotoHtml()}</div>
+      <label class="btn foto-add" for="foto-file">${IC.camera} Scatta o scegli foto</label>
+      <input type="file" id="foto-file" accept="image/*" multiple hidden>
+    </section>`}
     ${p.esempio ? '' : `<section class="card" id="pagamenti">
       <h2>Pagamenti <small>acconti e saldo, solo per voi: il PDF non cambia</small></h2>
       <div id="pg-body">${pagamentiHtml(p)}</div>
@@ -673,6 +681,9 @@ function fillCliente(nome) {
   });
 }
 
+main.addEventListener('change', e => {
+  if (e.target.id === 'foto-file') { const files = [...(e.target.files || [])]; e.target.value = ''; aggiungiFoto(files); }
+});
 main.addEventListener('input', e => {
   const t = e.target;
   if (S.view === 'impostazioni' && t.dataset.set) return onSettingInput(t);
@@ -791,7 +802,9 @@ async function onAct(b) {
     }
     case 'del':
       if (await confirmBox('Eliminare il preventivo ' + numStr(p) + '?', 'Il preventivo viene cancellato per tutti. Non si può annullare.', 'Elimina')) {
-        clearTimeout(saveTimer); saveTimer = null; write('preventivi', p.id, DEL); S.current = null; go('lista'); toast('Preventivo eliminato');
+        clearTimeout(saveTimer); saveTimer = null; write('preventivi', p.id, DEL);
+        if (fotoDi === p.id) (S.foto || []).forEach(f => write('foto', f.id, DEL));
+        S.current = null; go('lista'); toast('Preventivo eliminato');
       }
       break;
     case 'cSave': {
@@ -834,6 +847,7 @@ document.addEventListener('click', e => {
   if (open) { const p = S.preventivi.find(x => x.id === open.dataset.open); if (p) openEditor(p); return; }
   const li = e.target.closest('#main [data-li]'); if (li) { const x = S.listino.find(i => i.id === li.dataset.li); if (x) editListino(x); return; }
   const cl = e.target.closest('#main [data-cl]'); if (cl) { const x = S.clienti.find(i => i.id === cl.dataset.cl); if (x) editCliente(x); return; }
+  const ft = e.target.closest('#main [data-foto]'); if (ft) { apriFoto(ft.dataset.foto); return; }
   const sg = e.target.closest('#main [data-sugg]');
   if (sg) { usaSuggerimento(sg); return; }
   const b = e.target.closest('#main [data-act], #totbar [data-act]');
@@ -950,6 +964,64 @@ function apriMisure(si, vi) {
 
 function firmaEditor(p) {
   return p.firma ? `<div class="note firma-ed" id="firma-ed" style="margin:12px 0 0">${IC.check}<span>Firmato da <b>${esc(p.firma.nome || 'il cliente')}</b> il ${esc(fmtDate(p.firma.data))}. Per cambiare qualcosa fai una nuova revisione: andrà rifirmato.</span></div>` : '<span id="firma-ed" hidden></span>';
+}
+
+/* ---------- Foto del sopralluogo ---------- */
+// Caricate solo per il preventivo aperto (mai nell'elenco).
+let fotoSub = null, fotoDi = null;
+function seguiFoto(id) {
+  if (fotoDi === id) return;
+  if (fotoSub) { fotoSub(); fotoSub = null; }
+  fotoDi = id; S.foto = [];
+  if (!id) return;
+  fotoSub = store.subscribeWhere('foto', 'preventivoId', id, list => {
+    S.foto = list.sort((a, b) => String(a.creata).localeCompare(String(b.creata)));
+    const g = $('#foto-grid'); if (g) g.innerHTML = fotoHtml();
+  }, err => console.error(err));
+}
+function fotoHtml() {
+  const l = S.foto || [];
+  return l.map((f, i) => `<button class="ft" type="button" data-foto="${esc(f.id)}" aria-label="Foto ${i + 1} di ${l.length}"><img src="${esc(f.dataURL)}" alt="" loading="lazy" decoding="async"></button>`).join('')
+    + (fotoCaricamento ? `<div class="ft carica" aria-live="polite">Riduco ${fotoCaricamento}…</div>` : '');
+}
+let fotoCaricamento = 0;
+async function aggiungiFoto(files) {
+  const p = S.current; if (!p || !files.length) return;
+  const { riduciFoto } = await import('./foto.js');
+  let ok = 0, ko = 0;
+  for (const file of files) {
+    fotoCaricamento = files.length - ok - ko; const g = $('#foto-grid'); if (g) g.innerHTML = fotoHtml();
+    try {
+      const dataURL = await riduciFoto(file);
+      await write('foto', uid(), { preventivoId: p.id, creata: new Date().toISOString(), dataURL });
+      ok++;
+    } catch (e) { console.error(e); ko++; }
+  }
+  fotoCaricamento = 0; const g = $('#foto-grid'); if (g) g.innerHTML = fotoHtml();
+  if (ko) toast(`${ko} ${ko === 1 ? 'foto non caricata' : 'foto non caricate'}: formato non leggibile`);
+  else toast(ok === 1 ? 'Foto aggiunta' : `${ok} foto aggiunte`);
+}
+function apriFoto(id) {
+  const l = S.foto || []; let i = l.findIndex(f => f.id === id); if (i < 0) return;
+  const draw = () => {
+    const f = l[i];
+    $('#fv-img').src = f.dataURL;
+    $('#fv-n').textContent = `${i + 1} di ${l.length} · ${f.creata ? fmtDate(String(f.creata).slice(0, 10)) : ''}`;
+    $('#fv-prev').disabled = i === 0; $('#fv-next').disabled = i === l.length - 1;
+  };
+  openModal(`<div class="sheet foto-view" id="fv" role="dialog" aria-modal="true" aria-labelledby="fv-n">
+    <div class="sheet-h"><span id="fv-n"></span><button class="icon-btn" type="button" data-close="no" aria-label="Chiudi">${IC.x}</button></div>
+    <div class="fv-b"><img id="fv-img" alt="Foto del sopralluogo"></div>
+    <div class="sheet-f"><button class="btn danger left" type="button" data-act="fotoDel">${IC.trash} Elimina</button><button class="btn" type="button" id="fv-prev" aria-label="Foto precedente">${IC.back}</button><button class="btn fv-next" type="button" id="fv-next" aria-label="Foto successiva">${IC.back}</button></div>
+  </div>`);
+  draw();
+  $('#fv-prev').onclick = () => { if (i > 0) { i--; draw(); } };
+  $('#fv-next').onclick = () => { if (i < l.length - 1) { i++; draw(); } };
+  $('#fv [data-act="fotoDel"]').onclick = async () => {
+    const f = l[i];
+    if (!(await confirmBox('Eliminare questa foto?', 'La foto viene cancellata per tutti. Non si può annullare.', 'Elimina'))) return;
+    write('foto', f.id, DEL); toast('Foto eliminata');
+  };
 }
 
 /* ---------- Pagamenti ---------- */
@@ -1409,7 +1481,9 @@ function rivedi(item, i, n, esito) {
 async function esportaBackup() {
   const strip = r => ({ ...r });
   const { ...az } = S.azienda;
-  const dati = { formato: 'nazifoski-dati', esportato: new Date().toISOString(), preventivi: S.preventivi.map(strip), listino: S.listino.map(strip), clienti: S.clienti.map(strip), azienda: az };
+  let foto = [];
+  try { foto = await store.all('foto'); } catch (e) { toast('Foto non incluse: non riesco a leggerle adesso'); }
+  const dati = { formato: 'nazifoski-dati', esportato: new Date().toISOString(), preventivi: S.preventivi.map(strip), listino: S.listino.map(strip), clienti: S.clienti.map(strip), foto, azienda: az };
   const nome = `nazifoski-dati-${today()}.json`;
   const blob = new Blob([JSON.stringify(dati, null, 1)], { type: 'application/json' });
   const file = new File([blob], nome, { type: 'application/json' });

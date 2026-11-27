@@ -1,13 +1,15 @@
 // Archivio dati: Firestore (reale) o in memoria (test e anteprima). Stessa interfaccia.
 //   subscribe(coll, cb)        cb(lista di {id, ...dati}, {fromCache, pending})  -> unsubscribe
 //   subscribeDoc(path, cb)     cb(dati | null)                                   -> unsubscribe
+//   subscribeWhere(coll, campo, valore, cb)  come subscribe, solo i documenti con campo == valore
+//   all(coll)                  Promise<lista> lettura una tantum (copie di sicurezza)
 //   save(coll, id, dati)       scrittura completa (Promise; offline resta in coda e si sincronizza dopo)
 //   remove(coll, id)
 //   ids(coll)                  Promise<string[]> id esistenti
 //   onSync(cb)                 cb({online, pending})
 export const FIREBASE_VERSION = '10.14.1';
 export const FB_URL = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/`;
-export const COLLEZIONI = ['preventivi', 'listino', 'clienti'];
+export const COLLEZIONI = ['preventivi', 'listino', 'clienti', 'foto'];
 
 export async function createStore(kind, opts = {}) {
   if (kind === 'locale') return localStore();
@@ -19,12 +21,15 @@ function memoryStore(seed, deny, persist) {
   const data = {};
   const subs = {};
   const docSubs = {};
+  const whereSubs = new Set();
   const syncSubs = new Set();
   const coll = c => (data[c] || (data[c] = new Map()));
   for (const [c, rows] of Object.entries(seed)) for (const r of rows || []) { const { id, ...rest } = r; coll(c).set(id, rest); }
   const list = c => [...coll(c)].map(([id, d]) => ({ ...structuredClone(d), id }));
+  const filtra = w => list(w.c).filter(r => r[w.campo] === w.valore);
   const emit = c => {
     (subs[c] || new Set()).forEach(cb => cb(list(c), { fromCache: false, pending: false }));
+    whereSubs.forEach(w => { if (w.c === c) w.cb(filtra(w), { fromCache: false, pending: false }); });
     for (const [path, set] of Object.entries(docSubs)) {
       const [pc, pid] = path.split('/');
       if (pc === c) { const d = coll(c).get(pid); set.forEach(cb => cb(d ? structuredClone(d) : null)); }
@@ -40,6 +45,13 @@ function memoryStore(seed, deny, persist) {
       cb(d ? structuredClone(d) : null);
       return () => docSubs[path].delete(cb);
     },
+    subscribeWhere(c, campo, valore, cb, onError) {
+      if (deny) { onError && onError(denied); return () => {}; }
+      const w = { c, campo, valore, cb }; whereSubs.add(w);
+      cb(filtra(w), { fromCache: false, pending: false });
+      return () => whereSubs.delete(w);
+    },
+    async all(c) { return list(c); },
     async save(c, id, d) { const { id: _ignored, ...rest } = d; coll(c).set(id, structuredClone(rest)); emit(c); if (persist) await persist.put(c, id, rest); },
     async remove(c, id) { coll(c).delete(id); emit(c); if (persist) await persist.del(c, id); },
     async ids(c) { return [...coll(c).keys()]; },
@@ -75,6 +87,12 @@ async function firestoreStore(app, emulator) {
       const [c, id] = path.split('/');
       return fs.onSnapshot(fs.doc(db, c, id), snap => cb(snap.exists() ? snap.data() : null), err => onError && onError(err));
     },
+    subscribeWhere(c, campo, valore, cb, onError) {
+      return fs.onSnapshot(fs.query(fs.collection(db, c), fs.where(campo, '==', valore)), { includeMetadataChanges: true }, snap => {
+        cb(snap.docs.map(d => ({ ...d.data(), id: d.id })), { fromCache: snap.metadata.fromCache, pending: snap.metadata.hasPendingWrites });
+      }, err => onError && onError(err));
+    },
+    async all(c) { const s = await fs.getDocs(fs.collection(db, c)); return s.docs.map(d => ({ ...d.data(), id: d.id })); },
     save(c, id, d) { const { id: _ignored, ...rest } = d; return fs.setDoc(fs.doc(db, c, id), rest); },
     remove(c, id) { return fs.deleteDoc(fs.doc(db, c, id)); },
     async ids(c) { const s = await fs.getDocs(fs.collection(db, c)); return s.docs.map(d => d.id); },
@@ -124,7 +142,7 @@ function esporta(list) {
   const strip = r => { const { id, ...rest } = r; return { id, ...rest }; };
   return {
     formato: 'nazifoski-dati', esportato: new Date().toISOString(),
-    preventivi: list('preventivi').map(strip), listino: list('listino').map(strip), clienti: list('clienti').map(strip),
+    preventivi: list('preventivi').map(strip), listino: list('listino').map(strip), clienti: list('clienti').map(strip), foto: list('foto').map(strip),
     ...(az ? { azienda: (({ id, ...rest }) => rest)(az) } : {})
   };
 }

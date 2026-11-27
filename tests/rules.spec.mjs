@@ -56,6 +56,17 @@ test('senza accesso: niente', async () => {
   await assertFails(getDoc(doc(db, 'preventivi/p1')));
 });
 
+test('foto del sopralluogo: autorizzati sì, estranei no', async () => {
+  const o = ctx('o', OWNER);
+  await assertSucceeds(setDoc(doc(o, 'foto/f1'), { preventivoId: 'p1', creata: '2026-11-27T10:00:00Z', dataURL: 'data:image/jpeg;base64,AAAA' }));
+  const m = ctx('m', 'moglie@example.com');
+  await assertSucceeds(getDoc(doc(m, 'foto/f1')));
+  await assertSucceeds(setDoc(doc(m, 'foto/f2'), { preventivoId: 'p1', creata: '2026-11-27T10:01:00Z', dataURL: 'data:image/jpeg;base64,BBBB' }));
+  const x = ctx('x', 'sconosciuto@example.com');
+  await assertFails(getDoc(doc(x, 'foto/f1')));
+  await assertFails(setDoc(doc(x, 'foto/f3'), { preventivoId: 'p1', dataURL: 'x' }));
+});
+
 test('collezioni non previste: chiuse anche al titolare', async () => {
   const db = ctx('o', OWNER);
   await assertFails(setDoc(doc(db, 'altro/x'), { a: 1 }));

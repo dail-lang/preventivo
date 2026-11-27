@@ -330,6 +330,17 @@ select.in { appearance: none; -webkit-appearance: none; background-image: linear
 .fi-f .btn { flex: 1; min-height: 48px; }
 .firma-ed { background: var(--ok-tint); color: var(--ok); flex-wrap: nowrap; justify-content: flex-start; }
 .firma-ed svg { width: 18px; height: 18px; flex: none; }
+.foto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.foto-grid:empty { display: none; }
+.ft { aspect-ratio: 1; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--paper-alt); cursor: pointer; }
+.ft img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ft.carica { display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--stone); text-align: center; padding: 6px; }
+.foto-add { width: 100%; }
+.foto-view { width: min(900px, 100%); }
+.fv-b { display: flex; align-items: center; justify-content: center; background: #111; min-height: 0; flex: 1; }
+.fv-b img { max-width: 100%; max-height: 68vh; display: block; }
+.foto-view .sheet-h span { color: var(--stone); font-size: 14px; flex: 1; }
+.foto-view .fv-next svg { transform: scaleX(-1); }
 .rev-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .rev-bar .btn { flex: 1 1 auto; }
 .rv-item { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--line-soft); }

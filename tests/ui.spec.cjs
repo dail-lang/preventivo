@@ -393,6 +393,61 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2k. Foto del sopralluogo
+  {
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', seedBase(), { acceptDownloads: true });
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    // una foto grande come quelle del telefono (4000×3000)
+    const aggiungi = () => page.evaluate(async () => {
+      const cv = document.createElement('canvas'); cv.width = 4000; cv.height = 3000;
+      const g = cv.getContext('2d');
+      const gr = g.createLinearGradient(0, 0, 4000, 3000); gr.addColorStop(0, '#8a6a4a'); gr.addColorStop(1, '#d8d0c0');
+      g.fillStyle = gr; g.fillRect(0, 0, 4000, 3000);
+      for (let i = 0; i < 4000; i++) { g.fillStyle = `hsl(${i % 360},40%,${30 + (i % 50)}%)`; g.fillRect((i * 997) % 4000, (i * 613) % 3000, 40, 30); }
+      const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.95));
+      const inp = document.querySelector('#foto-file'); if (!inp) return 0;
+      const dt = new DataTransfer(); dt.items.add(new File([blob], 'IMG_0001.jpg', { type: 'image/jpeg' }));
+      inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+      return blob.size;
+    }).catch(() => 0);
+    const orig = await aggiungi();
+    await page.waitForSelector('#foto .ft img', { timeout: 15000 }).catch(() => {});
+    const info = await page.$eval('#foto .ft img', i => ({ len: i.src.length, w: i.naturalWidth, h: i.naturalHeight })).catch(() => null);
+    check('foto: ridotta a 1600 px e ≤ 600 KB', !!info && info.w === 1600 && info.h === 1200 && info.len <= 600 * 1024, JSON.stringify(info) + ' originale ' + orig);
+    await page.click('#foto .ft').catch(() => {});
+    check('foto: tocco → si vede grande', await page.isVisible('#fv img').catch(() => false));
+    await page.click('#fv [data-act="fotoDel"]').catch(() => {});
+    await page.click('#modal [data-close="ok"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('foto: eliminata', (await page.$$('#foto .ft')).length === 0);
+    await aggiungi();
+    await page.waitForSelector('#foto .ft img', { timeout: 15000 }).catch(() => {});
+    await page.click('[data-act="dup"]').catch(() => {});
+    await page.waitForTimeout(600);
+    check('foto: la copia del preventivo non ha foto', (await page.textContent('.ed-top h1')).includes('2026/') && !!(await page.$('#foto')) && (await page.$$('#foto .ft')).length === 0);
+    const backup = async () => {
+      if (await page.isVisible('.ed-top [data-act="back"]').catch(() => false)) { await page.click('.ed-top [data-act="back"]'); await page.waitForTimeout(700); }
+      await page.locator('[data-view="impostazioni"]:visible').first().click().catch(() => {});
+      await page.waitForSelector('[data-act="backup"]:visible').catch(() => {});
+      const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.locator('[data-act="backup"]:visible').first().click()]).catch(() => [null]);
+      if (!dl) return null;
+      const p = await dl.path(); return JSON.parse(fs.readFileSync(p, 'utf8'));
+    };
+    const b1 = await backup();
+    check('foto: la copia di sicurezza contiene la foto', !!b1 && Array.isArray(b1.foto) && b1.foto.length === 1 && b1.foto[0].preventivoId === 'acorpo', b1 && JSON.stringify((b1.foto || []).map(f => f.preventivoId)));
+    await page.locator('[data-view="lista"]:visible').first().click().catch(() => {});
+    await page.click('[data-open="acorpo"]').catch(() => {});
+    await page.click('[data-act="del"]').catch(() => {});
+    await page.click('#modal [data-close="ok"]').catch(() => {});
+    await page.waitForTimeout(500);
+    const b2 = await backup();
+    check('foto: eliminando il preventivo spariscono le sue foto', !!b2 && Array.isArray(b2.foto) && b2.foto.length === 0, b2 && JSON.stringify(b2.foto && b2.foto.length));
+    check('foto: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

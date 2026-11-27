@@ -36,6 +36,8 @@ service cloud.firestore {
     match /listino/{id}    { allow read, write: if isAllowed(); }
     match /clienti/{id}    { allow read, write: if isAllowed(); }
     match /impostazioni/{id} { allow read, write: if isAllowed(); }
+    // Foto del sopralluogo: una per documento, già ridotte sul telefono (sotto il limite di 1 MB).
+    match /foto/{id}       { allow read, write: if isAllowed(); }
 
     // Tutto il resto è chiuso.
   }

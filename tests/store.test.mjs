@@ -49,3 +49,26 @@ test('memory store con deny: le letture danno permission-denied', async () => {
   assert.equal(err && err.code, 'permission-denied');
   assert.equal(got, 'none');
 });
+
+test('memory store: subscribeWhere riceve solo le foto di quel preventivo', async () => {
+  const st = await createStore('memory', { seed: { foto: [{ id: 'f1', preventivoId: 'p1', dataURL: 'a' }, { id: 'f2', preventivoId: 'p2', dataURL: 'b' }] } });
+  const seen = [];
+  const unsub = st.subscribeWhere('foto', 'preventivoId', 'p1', list => seen.push(list.map(x => x.id).sort().join(',')));
+  await st.save('foto', 'f3', { preventivoId: 'p1', dataURL: 'c' });
+  await st.save('foto', 'f4', { preventivoId: 'p2', dataURL: 'd' });
+  await st.remove('foto', 'f1');
+  unsub();
+  await st.save('foto', 'f5', { preventivoId: 'p1', dataURL: 'e' });
+  assert.deepEqual(seen, ['f1', 'f1,f3', 'f1,f3', 'f3']);
+});
+
+test('foto: nel backup, in all() e nel trasferimento online', async () => {
+  const src = await createStore('memory', { seed: { preventivi: [{ id: 'p1', numero: 1 }], foto: [{ id: 'f1', preventivoId: 'p1', creata: '2026-11-27', dataURL: 'data:image/jpeg;base64,AAAA' }] } });
+  const dati = src.exportAll();
+  assert.equal(dati.foto.length, 1);
+  assert.equal((await src.all('foto')).length, 1);
+  const dst = await createStore('memory');
+  const r = await importa(dst, dati);
+  assert.equal(r.creati, 2);
+  assert.deepEqual(await dst.ids('foto'), ['f1']);
+});
