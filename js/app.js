@@ -177,7 +177,7 @@ async function boot() {
     // Senza configurazione Firebase: dati «solo su questo telefono», senza accesso.
     const kind = TEST ? 'test' : app ? 'online' : 'locale';
     auth = await createAuth(kind === 'test' ? 'fake' : kind === 'online' ? 'firebase' : 'locale', { app, user: seed.user, emulator: EMU });
-    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto } });
+    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, lento: seed.lento, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto } });
     store.onSync(s => { S.sync = s; renderSync(); });
     auth.onUser(onUser);
   } catch (e) {
@@ -681,6 +681,27 @@ function fillCliente(nome) {
   });
 }
 
+/* Un preventivo firmato non si modifica: la firma vale per quella versione. Si passa da una nuova revisione. */
+const ATTI_CONTENUTO = ['vAdd', 'vDel', 'vUp', 'vDown', 'vPick', 'vMisure', 'sAdd', 'sAddT', 'sDel', 'sUp', 'sDown', 'renumber'];
+const campoProtetto = t => !!(t && t.closest && t.closest('#main') && t.matches('[data-v], [data-s], [data-f]:not([data-f="stato"])'));
+let chiedoRevisione = false;
+async function revisionePerModificare() {
+  const p = S.current; if (!p || !p.firma || chiedoRevisione) return false;
+  chiedoRevisione = true;
+  try {
+    const ok = await confirmBox('Preventivo firmato', `${p.firma.nome || 'Il cliente'} ha firmato questa versione. Per modificarla faccio una nuova revisione: quella firmata resta salvata, con la firma, in «Revisioni precedenti».`, 'Nuova revisione');
+    if (!ok || S.current !== p) return false;
+    flushEditor();
+    S.current = nuovaRevisione(p, today()); saveCurrent(); renderEditor();
+    toast('Ora stai modificando ' + numStr(S.current));
+    return true;
+  } finally { chiedoRevisione = false; }
+}
+main.addEventListener('focusin', e => {
+  if (S.view !== 'editor' || !S.current || !S.current.firma || !campoProtetto(e.target)) return;
+  e.target.blur();
+  revisionePerModificare();
+});
 main.addEventListener('change', e => {
   if (e.target.id === 'foto-file') { const files = [...(e.target.files || [])]; e.target.value = ''; aggiungiFoto(files); }
 });
@@ -717,6 +738,7 @@ main.addEventListener('input', e => {
 
 async function onAct(b) {
   const act = b.dataset.act; const p = S.current;
+  if (S.view === 'editor' && p && p.firma && ATTI_CONTENUTO.includes(act)) { revisionePerModificare(); return; }
   if (act === 'new') { const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
   if (act === 'lNew') return editListino(null);
   if (act === 'richiamato') {
@@ -803,7 +825,8 @@ async function onAct(b) {
     case 'del':
       if (await confirmBox('Eliminare il preventivo ' + numStr(p) + '?', 'Il preventivo viene cancellato per tutti. Non si può annullare.', 'Elimina')) {
         clearTimeout(saveTimer); saveTimer = null; write('preventivi', p.id, DEL);
-        if (fotoDi === p.id) (S.foto || []).forEach(f => write('foto', f.id, DEL));
+        const pid = p.id;
+        store.idsWhere('foto', 'preventivoId', pid).then(ids => ids.forEach(id => write('foto', id, DEL))).catch(() => { if (fotoDi === pid) (S.foto || []).forEach(f => write('foto', f.id, DEL)); });
         S.current = null; go('lista'); toast('Preventivo eliminato');
       }
       break;
@@ -993,7 +1016,8 @@ async function aggiungiFoto(files) {
     fotoCaricamento = files.length - ok - ko; const g = $('#foto-grid'); if (g) g.innerHTML = fotoHtml();
     try {
       const dataURL = await riduciFoto(file);
-      await write('foto', uid(), { preventivoId: p.id, creata: new Date().toISOString(), dataURL });
+      // senza rete Firestore conferma solo quando torna il segnale: la foto resta in coda e si passa alla prossima
+      write('foto', uid(), { preventivoId: p.id, creata: new Date().toISOString(), dataURL });
       ok++;
     } catch (e) { console.error(e); ko++; }
   }
@@ -1070,7 +1094,7 @@ function apriRevisioni() {
     <div class="sheet-b">
       <p class="help" style="margin:0;font-size:14px;color:var(--stone)">Ora stai lavorando su ${esc(numStr(p))}. Le versioni vecchie si possono rivedere in PDF o rimettere al posto di quella attuale.</p>
       ${lista.map(r => `<div class="rv-item">
-        <div class="rv-i"><b>${esc(numStr({ ...p, rev: r.n }))}${r.n === 1 ? ' (prima versione)' : ''}</b><span>${esc(fmtDate(r.data))} · ${fmtEur(r.totale)}</span></div>
+        <div class="rv-i"><b>${esc(numStr({ ...p, rev: r.n }))}${r.n === 1 ? ' (prima versione)' : ''}${r.contenuto && r.contenuto.firma ? ' · firmata' : ''}</b><span>${esc(fmtDate(r.data))} · ${fmtEur(r.totale)}</span></div>
         <div class="rv-a"><button class="btn" type="button" data-act="rvVedi" data-n="${r.n}">${IC.doc} Vedi PDF</button><button class="btn" type="button" data-act="rvRipristina" data-n="${r.n}">Ripristina</button></div>
       </div>`).join('')}
     </div></div>`);
@@ -1080,7 +1104,7 @@ function apriRevisioni() {
     const r = (S.current.revisioni || []).find(x => x.n === n); if (!r) return;
     if (b.dataset.act === 'rvVedi') {
       closeModal(true);
-      openPreview({ ...clone(S.current), ...clone(r.contenuto), rev: n, stato: 'archiviata', firma: undefined });
+      openPreview({ ...clone(S.current), ...clone(r.contenuto), rev: n, stato: 'archiviata', firma: r.contenuto.firma || undefined });
     }
     if (b.dataset.act === 'rvRipristina') {
       if (!(await confirmBox(`Ripristinare la ${n === 1 ? 'prima versione' : 'rev. ' + n}?`, 'La versione attuale resta salvata tra le revisioni precedenti.', 'Ripristina'))) return;

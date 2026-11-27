@@ -78,3 +78,13 @@ test('PDF: firma del cliente nello spazio «Per accettazione»', () => {
   const senza = JSON.stringify(buildDoc({ ...base(), firma: undefined }, { ragione: 'X', firma: false }, null));
   assert.ok(!senza.includes('PER ACCETTAZIONE') && !senza.includes('Firmato da'));
 });
+
+test('revisione di un preventivo firmato: la versione firmata conserva la firma, il ripristino no', () => {
+  const p = base();
+  const q = nuovaRevisione(p, '2026-11-26');
+  assert.equal(q.firma, undefined);
+  assert.deepEqual(q.revisioni[0].contenuto.firma, p.firma);
+  const r = ripristinaRevisione(q, 1, '2026-11-27');
+  assert.equal(r.firma, undefined, 'la firma non torna sulla versione attuale');
+  assert.equal(r.stato, 'bozza');
+});

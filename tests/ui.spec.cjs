@@ -377,6 +377,13 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
       for (let i = 1; i <= 12; i++) await page.mouse.move(bx.x + bx.w * (0.2 + i * 0.05), bx.y + bx.h * (0.6 - Math.sin(i / 2) * 0.25));
       await page.mouse.up();
     }
+    // la tastiera che si apre (o il telefono girato) cambia l'altezza: la firma non deve sparire
+    const vs = page.viewportSize();
+    await page.setViewportSize({ width: vs.width, height: Math.round(vs.height * 0.6) });
+    await page.waitForTimeout(300);
+    await page.setViewportSize(vs);
+    await page.waitForTimeout(300);
+    check('firma: resta dopo un cambio di dimensioni dello schermo', !(await page.isDisabled('#fi-ok').catch(() => true)) && await page.$eval('#fi-pad', c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i]) return true; return false; }).catch(() => false));
     await page.fill('#fi-nome', 'Mario Rossi').catch(() => {});
     check('firma: dopo il tratto «Conferma» si accende', !(await page.isDisabled('#fi-ok').catch(() => true)));
     await page.evaluate(() => { const pm = window.pdfMake; if (!pm) return; const o = pm.createPdf.bind(pm); pm.createPdf = (dd, ...r) => { window.__dd = JSON.stringify(dd); return o(dd, ...r); }; });
@@ -445,6 +452,55 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     const b2 = await backup();
     check('foto: eliminando il preventivo spariscono le sue foto', !!b2 && Array.isArray(b2.foto) && b2.foto.length === 0, b2 && JSON.stringify(b2.foto && b2.foto.length));
     check('foto: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  // 2l. Foto senza rete: il salvataggio resta in coda ma le foto successive vanno avanti
+  {
+    const s = seedBase(); s.lento = ['foto'];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.evaluate(async () => {
+      const dt = new DataTransfer();
+      for (let k = 0; k < 3; k++) {
+        const cv = document.createElement('canvas'); cv.width = 800; cv.height = 600; const g = cv.getContext('2d'); g.fillStyle = ['#a00', '#0a0', '#00a'][k]; g.fillRect(0, 0, 800, 600);
+        dt.items.add(new File([await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.9))], `f${k}.jpg`, { type: 'image/jpeg' }));
+      }
+      const inp = document.querySelector('#foto-file'); inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForFunction(() => document.querySelectorAll('#foto .ft img').length === 3, null, { timeout: 15000 }).catch(() => {});
+    check('foto offline: tutte e tre visibili anche se il salvataggio è in coda', (await page.$$('#foto .ft img')).length === 3, String((await page.$$('#foto .ft img')).length));
+    check('foto offline: niente «Riduco…» bloccato', !(await page.$('#foto .ft.carica')));
+    check('foto offline: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  // 2m. Preventivo firmato: per modificarlo serve una nuova revisione
+  {
+    const s = seedBase();
+    s.preventivi = [{ ...fx.acorpo, stato: 'accettato', firma: { png: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', nome: 'Mario Rossi', data: '2026-11-20' } }];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('[data-sez="0"] [data-voce="0"] [data-v="prezzo"]').catch(() => {});
+    await page.waitForTimeout(300);
+    const t = await page.textContent('#modal').catch(() => '');
+    check('firmato: toccando un prezzo chiede una nuova revisione', /firmato/i.test(t) && /revisione/i.test(t), t);
+    await page.click('#modal [data-close="no"]').catch(() => {});
+    await page.waitForTimeout(200);
+    await page.click('[data-sez="0"] [data-act="vAdd"]').catch(() => {});
+    await page.waitForTimeout(300);
+    check('firmato: anche aggiungere una voce lo chiede', /firmato/i.test(await page.textContent('#modal').catch(() => '')));
+    await page.click('#modal [data-close="ok"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('firmato: dopo la conferma è la rev. 2, bozza, senza firma', (await page.textContent('.ed-top h1')).includes('rev. 2') && (await page.inputValue('#f-stato')) === 'bozza' && !(await page.textContent('#main')).includes('Firmato da Mario'));
+    await page.fill('[data-sez="0"] [data-voce="0"] [data-v="prezzo"]', '5000').catch(() => {});
+    await page.waitForTimeout(200);
+    check('firmato: ora si modifica liberamente', (await page.inputValue('[data-sez="0"] [data-voce="0"] [data-v="prezzo"]')) === '5000' && !(await page.isVisible('#modal').catch(() => false)));
+    check('firmato: nessun errore', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
 

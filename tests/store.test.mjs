@@ -72,3 +72,17 @@ test('foto: nel backup, in all() e nel trasferimento online', async () => {
   assert.equal(r.creati, 2);
   assert.deepEqual(await dst.ids('foto'), ['f1']);
 });
+
+test('subscribeWhere non copia le foto degli altri preventivi', async () => {
+  // un documento non copiabile in un altro preventivo: se venisse copiato, structuredClone fallirebbe
+  const st = await createStore('memory', { seed: { foto: [{ id: 'f1', preventivoId: 'p1', dataURL: 'a' }, { id: 'f2', preventivoId: 'p2', dataURL: () => 0 }] } });
+  const seen = [];
+  st.subscribeWhere('foto', 'preventivoId', 'p1', l => seen.push(l.map(x => x.id).join()));
+  await st.save('foto', 'f3', { preventivoId: 'p1', dataURL: 'c' });
+  assert.deepEqual(seen, ['f1', 'f1,f3']);
+});
+
+test('idsWhere: id delle foto di un preventivo, anche senza averle aperte', async () => {
+  const st = await createStore('memory', { seed: { foto: [{ id: 'f1', preventivoId: 'p1' }, { id: 'f2', preventivoId: 'p2' }, { id: 'f3', preventivoId: 'p1' }] } });
+  assert.deepEqual((await st.idsWhere('foto', 'preventivoId', 'p1')).sort(), ['f1', 'f3']);
+});

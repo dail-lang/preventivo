@@ -13,10 +13,11 @@ export const COLLEZIONI = ['preventivi', 'listino', 'clienti', 'foto'];
 
 export async function createStore(kind, opts = {}) {
   if (kind === 'locale') return localStore();
-  return kind === 'firestore' ? firestoreStore(opts.app, opts.emulator) : memoryStore(opts.seed || {}, !!opts.deny);
+  return kind === 'firestore' ? firestoreStore(opts.app, opts.emulator) : memoryStore(opts.seed || {}, !!opts.deny, null, opts.lento);
 }
 
-function memoryStore(seed, deny, persist) {
+// lento (solo prove): collezioni dove save resta «in coda» per sempre, come Firestore senza rete.
+function memoryStore(seed, deny, persist, lento) {
   const denied = { code: 'permission-denied', message: 'Missing or insufficient permissions.' };
   const data = {};
   const subs = {};
@@ -26,7 +27,7 @@ function memoryStore(seed, deny, persist) {
   const coll = c => (data[c] || (data[c] = new Map()));
   for (const [c, rows] of Object.entries(seed)) for (const r of rows || []) { const { id, ...rest } = r; coll(c).set(id, rest); }
   const list = c => [...coll(c)].map(([id, d]) => ({ ...structuredClone(d), id }));
-  const filtra = w => list(w.c).filter(r => r[w.campo] === w.valore);
+  const filtra = w => [...coll(w.c)].filter(([, d]) => d[w.campo] === w.valore).map(([id, d]) => ({ ...structuredClone(d), id }));
   const emit = c => {
     (subs[c] || new Set()).forEach(cb => cb(list(c), { fromCache: false, pending: false }));
     whereSubs.forEach(w => { if (w.c === c) w.cb(filtra(w), { fromCache: false, pending: false }); });
@@ -52,7 +53,8 @@ function memoryStore(seed, deny, persist) {
       return () => whereSubs.delete(w);
     },
     async all(c) { return list(c); },
-    async save(c, id, d) { const { id: _ignored, ...rest } = d; coll(c).set(id, structuredClone(rest)); emit(c); if (persist) await persist.put(c, id, rest); },
+    async idsWhere(c, campo, valore) { return [...coll(c)].filter(([, d]) => d[campo] === valore).map(([id]) => id); },
+    async save(c, id, d) { const { id: _ignored, ...rest } = d; coll(c).set(id, structuredClone(rest)); emit(c); if (lento && lento.includes(c)) return new Promise(() => {}); if (persist) await persist.put(c, id, rest); },
     async remove(c, id) { coll(c).delete(id); emit(c); if (persist) await persist.del(c, id); },
     async ids(c) { return [...coll(c).keys()]; },
     onSync(cb) { syncSubs.add(cb); cb({ online: true, pending: false }); return () => syncSubs.delete(cb); },
@@ -93,6 +95,8 @@ async function firestoreStore(app, emulator) {
       }, err => onError && onError(err));
     },
     async all(c) { const s = await fs.getDocs(fs.collection(db, c)); return s.docs.map(d => ({ ...d.data(), id: d.id })); },
+    /** Id dei documenti con campo == valore: chiede al server (o, senza rete, alla copia locale). */
+    async idsWhere(c, campo, valore) { const s = await fs.getDocs(fs.query(fs.collection(db, c), fs.where(campo, '==', valore))); return s.docs.map(d => d.id); },
     save(c, id, d) { const { id: _ignored, ...rest } = d; return fs.setDoc(fs.doc(db, c, id), rest); },
     remove(c, id) { return fs.deleteDoc(fs.doc(db, c, id)); },
     async ids(c) { const s = await fs.getDocs(fs.collection(db, c)); return s.docs.map(d => d.id); },

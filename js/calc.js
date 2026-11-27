@@ -168,7 +168,7 @@ export function daRichiamare(list, oggiIso, giorni) {
 }
 
 /* Revisioni: copie delle versioni precedenti dentro il preventivo stesso. */
-const CAMPI_REV = ['data', 'cliente', 'cantiere', 'oggetto', 'sezioni', 'sconto', 'iva', 'dettaglio', 'tempi', 'pagamento', 'note'];
+const CAMPI_REV = ['data', 'cliente', 'cantiere', 'oggetto', 'sezioni', 'sconto', 'iva', 'dettaglio', 'tempi', 'pagamento', 'note', 'firma'];
 const copia = x => JSON.parse(JSON.stringify(x));
 export const MAX_REVISIONI = 10;
 /** Salva la versione attuale tra le revisioni (max 10) e apre la successiva: torna bozza, va rifirmata e rispedita. */
@@ -190,6 +190,7 @@ export function ripristinaRevisione(p, n, oggiIso) {
   if (!r) return null;
   const q = nuovaRevisione(p, oggiIso);
   Object.assign(q, copia(r.contenuto));
+  delete q.firma; // la firma resta solo sulla versione firmata: quella ripristinata va rifirmata
   q.data = oggiIso;
   return q;
 }

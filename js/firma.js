@@ -41,11 +41,16 @@ export function apriFirma({ nome = '' } = {}) {
     const ok = ov.querySelector('#fi-ok'), hint = ov.querySelector('.fi-hint');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let box = null, giu = false, last = null;
+    // Tastiera, rotazione: il riquadro cambia misura ma il tratto già fatto si conserva (copiato e ridisegnato).
     const dimensiona = () => {
       const r = cv.getBoundingClientRect();
-      cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+      const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+      if (!w || !h || (w === cv.width && h === cv.height)) return;
+      let copia = null;
+      if (box && cv.width && cv.height) { copia = document.createElement('canvas'); copia.width = cv.width; copia.height = cv.height; copia.getContext('2d').drawImage(cv, 0, 0); }
+      cv.width = w; cv.height = h;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 2.6 * dpr; ctx.strokeStyle = '#14213d';
-      box = null; ok.disabled = true; hint.hidden = false;
+      if (copia) ctx.drawImage(copia, 0, 0);
     };
     const pt = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * dpr, y: (e.clientY - r.top) * dpr }; };
     const allarga = q => { box = box ? { x0: Math.min(box.x0, q.x), y0: Math.min(box.y0, q.y), x1: Math.max(box.x1, q.x), y1: Math.max(box.y1, q.y) } : { x0: q.x, y0: q.y, x1: q.x, y1: q.y }; };
