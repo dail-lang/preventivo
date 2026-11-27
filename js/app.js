@@ -336,7 +336,7 @@ function renderLista(fromData) {
     ${richiamo.size ? `<button class="note richiama" id="richiama" type="button" data-filter="${S.filter === 'richiamare' ? 'tutti' : 'richiamare'}">${IC.tel}<span><b>${richiamo.size} ${richiamo.size === 1 ? 'preventivo' : 'preventivi'} da richiamare</b> · inviati da più di ${Number(S.azienda.giorniRichiamo) || 10} giorni senza risposta</span><span class="vedi">${S.filter === 'richiamare' ? 'Mostra tutti' : 'Vedi'}</span></button>` : ''}
     <div class="head">
       <div><span class="eyebrow">${S.user && S.user.locale ? 'Dati solo su questo telefono' : 'Impresa Edile Nazifoski'}</span><h1>Preventivi</h1></div>
-      <button class="btn primary" data-act="new" type="button">${IC.plus} Nuovo preventivo</button>
+      <div class="head-actions"><button class="btn" data-act="modelli" type="button">${IC.list} Modelli</button><button class="btn primary" data-act="new" type="button">${IC.plus} Nuovo preventivo</button></div>
     </div>
     <div class="summary">
       ${sum('bozza', '--stone', 'Da completare', bozze, n => (n === 1 ? 'bozza' : 'bozze'))}
@@ -785,6 +785,7 @@ async function onAct(b) {
   if (S.view === 'misure' && (await onActMisure(act, b))) return;
   if (S.view === 'editor' && p && p.firma && ATTI_CONTENUTO.includes(act)) { revisionePerModificare(); return; }
   if (act === 'new') { if (S.modelli.length) return scegliModello(); const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
+  if (act === 'modelli') return scegliModello();
   if (act === 'lNew') return editListino(null);
   if (act === 'fiDisegna') {
     const { apriFirma, chiudiFirma } = await import('./firma.js');
@@ -1333,6 +1334,7 @@ function scegliModello() {
     <div class="sheet-b">
       <button class="pick" type="button" data-act="nmVuoto"><span><b>Preventivo vuoto</b><small>Parti da zero</small></span><span class="p">${IC.plus}</span></button>
       <div class="pick-cat">Dai tuoi modelli</div>
+      ${lista.length ? '' : `<div class="nm-vuoto"><b>Non hai ancora nessun modello.</b> Per crearne uno:<ol><li>apri un preventivo fatto bene, per esempio un bagno completo;</li><li>in alto tocca <b>«Salva modello»</b> e dagli un nome.</li></ol>Da quel momento lo trovi qui e ogni volta che tocchi «Nuovo preventivo»: escono le stesse voci e gli stessi prezzi, tu aggiungi solo il cliente.</div>`}
       ${lista.map(m => { const nv = (m.sezioni || []).reduce((t, s) => t + (s.voci || []).length, 0); return `<div class="nm-row"><button class="pick" type="button" data-modello="${esc(m.id)}"><span><b>${esc(m.nome || 'Modello')}</b><small>${nv} ${nv === 1 ? 'voce' : 'voci'}${m.oggetto && m.oggetto !== m.nome ? ' · ' + esc(m.oggetto) : ''}</small></span><span class="p">${fmtEur(totaleDi(m))}</span></button><button class="icon-btn del" type="button" data-act="mdDel" data-id="${esc(m.id)}" aria-label="Elimina modello ${esc(m.nome || '')}">${IC.trash}</button></div>`; }).join('')}
     </div></div>`);
   $('#nm').addEventListener('click', async e => {

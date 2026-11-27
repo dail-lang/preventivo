@@ -798,6 +798,20 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2x. Modelli facili da trovare, anche quando non ce n'è ancora nessuno
+  {
+    const { page, ctx, errors } = await open(browser, 'iPhone SE', seedBase());
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    check('modelli: pulsante «Modelli» nell\'elenco, visibile sul telefono', await page.isVisible('#main .head [data-act="modelli"]').catch(() => false));
+    await page.click('#main .head [data-act="modelli"]').catch(() => {});
+    await page.waitForSelector('#nm', { timeout: 3000 }).catch(() => {});
+    const t = await page.textContent('#nm').catch(() => '');
+    check('modelli: senza modelli spiega come crearne uno', /Salva modello/.test(t) && /nessun modello/i.test(t), t.slice(0, 160));
+    check('modelli: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();
