@@ -835,6 +835,40 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2z. Cantiere in agenda (nel preventivo accettato e firmato)
+  {
+    const s = seedBase();
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    s.preventivi = [{ ...fx.acorpo, stato: 'accettato', firma: { png, nome: 'Mario Rossi', data: '2026-11-20' }, cantiere: 'Via Roma 3, Rimini', tempi: 'Circa 6 giorni lavorativi',
+      rate: [{ id: 'r1', desc: "All'accettazione", perc: 30, importo: 1410.09, scadenza: '2026-11-20', pagata: '' }, { id: 'r2', desc: 'A metà lavori', perc: 40, importo: 1880.12, scadenza: '', pagata: '' }, { id: 'r3', desc: 'A fine lavori', perc: 30, importo: 1410.09, scadenza: '', pagata: '' }] }];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s, { acceptDownloads: true });
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.fill('#agenda [data-ag="inizio"]', '2026-11-27').catch(() => {});
+    await page.waitForTimeout(300);
+    check('agenda: nessuna revisione chiesta anche se firmato', !(await page.isVisible('#modal').catch(() => false)));
+    check('agenda: giorni presi dai tempi di esecuzione', (await page.inputValue('#agenda [data-ag="giorni"]').catch(() => '')) === '6');
+    check('agenda: fine prevista 04/12/2026', (await page.textContent('#ag-fine').catch(() => '')).includes('04/12/2026'));
+    const sc = async i => page.inputValue(`#pagamenti [data-rata="${i}"] [data-r="scadenza"]`).catch(() => '?');
+    check('agenda: rate senza scadenza prendono le date del cantiere', (await sc(0)) === '2026-11-20' && (await sc(1)) === '2026-12-01' && (await sc(2)) === '2026-12-04', [await sc(0), await sc(1), await sc(2)].join());
+    await page.click('#agenda [data-act="agSposta"][data-n="2"]').catch(() => {});
+    await page.waitForTimeout(300);
+    check('agenda: «+2» sposta l\'inizio di 2 giorni lavorativi', (await page.inputValue('#agenda [data-ag="inizio"]').catch(() => '')) === '2026-12-01' && (await page.textContent('#ag-fine').catch(() => '')).includes('09/12/2026'));
+    check('agenda: la rata di fine lavori segue il cantiere', (await sc(2)) === '2026-12-09', await sc(2));
+    await page.fill('#agenda [data-ag="chi"]', 'Ardit e Luca').catch(() => {});
+    await page.fill('#agenda [data-ag="note"]', 'Chiavi dalla vicina').catch(() => {});
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 8000 }), page.click('#agenda [data-act="agIcs"]')]).catch(() => [null]);
+    const ics = dl ? fs.readFileSync(await dl.path(), 'utf8') : '';
+    check('agenda: file per il calendario del telefono', ics.includes('DTSTART;VALUE=DATE:20261201') && ics.includes('Ardit e Luca'), ics.slice(0, 120));
+    await page.waitForTimeout(800);
+    await page.click('.ed-top [data-act="back"]'); await page.waitForTimeout(500);
+    await page.click('[data-open="acorpo"]'); await page.waitForTimeout(300);
+    check('agenda: dati salvati', (await page.inputValue('#agenda [data-ag="note"]').catch(() => '')) === 'Chiavi dalla vicina');
+    check('agenda: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

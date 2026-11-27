@@ -397,6 +397,14 @@ select.in { appearance: none; -webkit-appearance: none; background-image: linear
   .spesa .sd { grid-column: 1 / 6; } .spesa .sx { grid-column: 6; grid-row: 1; justify-self: end; }
   .spesa .st { grid-column: 1 / 3; } .spesa .sg { grid-column: 3 / 5; } .spesa .si { grid-column: 5 / 7; }
 }
+.ag-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ag-grid .ag-full { grid-column: 1 / -1; }
+@media (max-width: 400px) { .ag-grid { grid-template-columns: minmax(0, 1fr); } }
+.ag-grid textarea { min-height: 46px; resize: none; overflow: hidden; }
+.ag-fine { margin: 10px 0 0; font-size: 14.5px; color: var(--ink-soft); }
+.ag-act { align-items: center; }
+.ag-act .ag-lbl { font-size: 13px; font-weight: 600; color: var(--stone); }
+.ag-act [data-act="agSposta"] { min-width: 48px; padding-inline: 10px; font-variant-numeric: tabular-nums; }
 .rev-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .rev-bar .btn { flex: 1 1 auto; }
 .rv-item { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--line-soft); }

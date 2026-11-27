@@ -4,6 +4,7 @@ import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
 import { LISTINO_RIMINI, pianoListino } from './listino-rimini.js';
+import { fineLavori, spostaLavorativi, durataDaTesto, scadenzeDaCantiere, icsCantiere, lavorativo } from './agenda.js';
 import { areeStanza, espressione, perimetro, totaliStanze, LAVORAZIONI, vociPerLavorazione, sezioniDaRilievo } from './misure.js';
 import { VERSIONE } from './versione.js';
 import { firebaseConfig } from '../firebase-config.js';
@@ -54,6 +55,7 @@ const IC = {
   doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></svg>',
   metro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>',
   firma: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17c3-4 5-9 7-9 2.5 0-1 9 1.5 9 1.8 0 2.5-3 4-3 1.2 0 1 2 2.5 2H21"/><path d="M3 21h18"/></svg>',
+  calendario: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>',
   camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
   tel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
@@ -547,6 +549,18 @@ function renderEditor() {
       <label class="btn foto-add" for="foto-file">${IC.camera} Scatta o scegli foto</label>
       <input type="file" id="foto-file" accept="image/*" multiple hidden>
     </section>`}
+    ${p.esempio ? '' : `<section class="card" id="agenda"${mostraExtra(p) || p.agenda ? '' : ' hidden'}>
+      <h2>Cantiere in agenda <small>le date dei lavori: le ritrovi nella pagina Agenda</small></h2>
+      <div class="grid ag-grid">
+        <label class="field"><span>Inizio lavori</span><input class="in" type="date" data-ag="inizio" value="${esc((p.agenda && p.agenda.inizio) || '')}"></label>
+        <label class="field"><span>Giorni lavorativi</span><input class="in r" data-ag="giorni" inputmode="numeric" value="${esc((p.agenda && p.agenda.giorni) || '')}" placeholder="es. 10"></label>
+        <label class="field ag-full"><span>Chi ci lavora</span><input class="in" data-ag="chi" autocapitalize="words" value="${esc((p.agenda && p.agenda.chi) || '')}" placeholder="Es. Ardit e Luca"></label>
+        <label class="field ag-full"><span>Note del cantiere</span><textarea class="in" data-ag="note" placeholder="Es. chiavi dalla vicina, citofono 3; portare silicone grigio">${esc((p.agenda && p.agenda.note) || '')}</textarea></label>
+      </div>
+      <p class="ag-fine" id="ag-fine">${agFineHtml(p)}</p>
+      <div class="pg-act ag-act"><span class="ag-lbl">Sposta</span>${[-1, 1, 2, 5].map(n => `<button class="btn" type="button" data-act="agSposta" data-n="${n}" aria-label="Sposta di ${n} giorni lavorativi">${n > 0 ? '+' + n : '−1'}</button>`).join('')}
+        <button class="btn" type="button" data-act="agIcs">${IC.calendario} Aggiungi al calendario</button></div>
+    </section>`}
     ${p.esempio ? '' : `<section class="card" id="extra"${mostraExtra(p) ? '' : ' hidden'}>
       <h2>Lavori extra <small>varianti chieste durante il cantiere: PDF e firma a parte</small></h2>
       <div id="extra-list">${(p.extra || []).map(varianteHtml).join('')}</div>
@@ -573,7 +587,7 @@ function renderEditor() {
     <button class="btn primary" type="button" data-act="preview">${IC.doc} PDF</button>
   </div></div>`;
   refreshDatalist();
-  $$('#main textarea[data-v], #main textarea[data-xv]').forEach(autoGrow);
+  $$('#main textarea[data-v], #main textarea[data-xv], #main textarea[data-ag]').forEach(autoGrow);
   updateTotals();
   enter();
 }
@@ -750,7 +764,7 @@ main.addEventListener('input', e => {
     setPath(p, t.dataset.f, v);
     if (t.dataset.f === 'cliente.nome') fillCliente(t.value);
     if (t.dataset.f === 'stato' && v === 'inviato') { p.dataInvio = today(); delete p.richiamato; }
-    if (t.dataset.f === 'stato') { const ex = $('#extra'); if (ex) ex.hidden = !mostraExtra(p); const sp = $('#spese'); if (sp) sp.hidden = !mostraExtra(p) && !(p.spese || []).length; }
+    if (t.dataset.f === 'stato') { const ag = $('#agenda'); if (ag) ag.hidden = !mostraExtra(p) && !p.agenda; const ex = $('#extra'); if (ex) ex.hidden = !mostraExtra(p); const sp = $('#spese'); if (sp) sp.hidden = !mostraExtra(p) && !(p.spese || []).length; }
     if (t.dataset.f === 'numero' && v !== '') { $('.ed-top h1').textContent = numStr(p); $('#dupwrap').innerHTML = dupNote(p); }
   } else if (t.dataset.v) {
     const si = +t.closest('[data-sez]').dataset.sez, vi = +t.closest('[data-voce]').dataset.voce;
@@ -760,6 +774,17 @@ main.addEventListener('input', e => {
     if (t.dataset.v === 'um') { const q = $('[data-v="qta"]', t.closest('.voce')); if (q) q.placeholder = t.value === 'a corpo' ? '1' : 'es. 3,5*4'; }
   } else if (t.dataset.s) {
     p.sezioni[+t.closest('[data-sez]').dataset.sez][t.dataset.s] = t.value;
+  } else if (t.dataset.ag) {
+    const a = p.agenda = p.agenda || {};
+    const k = t.dataset.ag;
+    if (k === 'giorni') { const n = parseInt(t.value, 10); a.giorni = n >= 1 ? n : ''; }
+    else a[k] = t.value;
+    if (k === 'inizio' && a.inizio && !a.giorni) {
+      const d = durataDaTesto(p.tempi);
+      if (d) { a.giorni = d; const g = $('#agenda [data-ag="giorni"]'); if (g) g.value = d; }
+    }
+    if (k === 'note' && t.tagName === 'TEXTAREA') autoGrow(t);
+    aggiornaAgenda();
   } else if (t.dataset.sp) {
     const sp = (p.spese || [])[+t.closest('[data-spi]').dataset.spi]; if (!sp) return;
     if (t.dataset.sp === 'importo') { const v = num(t.value); sp.importo = t.value.trim() && isFinite(v) ? round2(v) : ''; }
@@ -774,6 +799,7 @@ main.addEventListener('input', e => {
     if (k === 'perc') { const v = num(t.value); r.perc = t.value.trim() && isFinite(v) ? v : ''; }
     else if (k === 'importo') { const v = num(t.value); r.importo = isFinite(v) ? round2(v) : 0; r.perc = ''; const pe = $('[data-r="perc"]', t.closest('[data-rata]')); if (pe) pe.value = ''; }
     else r[k] = t.value;
+    if (k === 'scadenza') delete r.scadenzaAuto;
     if (k === 'pagata' && !t.value) { r.pagata = ''; ridisegnaPagamenti(); }
     if (k === 'scadenza') t.closest('[data-rata]').classList.toggle('late', !r.pagata && !!r.scadenza && r.scadenza < today());
   } else return;
@@ -844,6 +870,16 @@ async function onAct(b) {
     }
     case 'revisioni': flushEditor(); apriRevisioni(); break;
     case 'modello': flushEditor(); salvaModello(p); break;
+    case 'agSposta': {
+      const a = p.agenda || {};
+      if (!a.inizio) { toast('Metti prima la data di inizio'); break; }
+      a.inizio = spostaLavorativi(a.inizio, Number(b.dataset.n));
+      const i = $('#agenda [data-ag="inizio"]'); if (i) i.value = a.inizio;
+      aggiornaAgenda(); markDirty();
+      toast(`Inizio spostato a ${giornoSett(a.inizio)} ${fmtDate(a.inizio)}`);
+      break;
+    }
+    case 'agIcs': flushEditor(); calendarioCantiere(p); break;
     case 'spAdd': (p.spese = p.spese || []).push({ id: uid(), data: today(), desc: '', tipo: 'materiali', importo: '' }); ridisegnaSpese(); markDirty(); { const d = $$('#spese [data-sp="desc"]'); if (d.length) d[d.length - 1].focus(); } break;
     case 'spDel': {
       const i = +b.closest('[data-spi]').dataset.spi; const sp = (p.spese || [])[i]; if (!sp) break;
@@ -893,7 +929,7 @@ async function onAct(b) {
       flushEditor();
       const anno = new Date().getFullYear();
       const np = { ...clone(p), id: uid(), anno, numero: nextNumero(S.preventivi, anno), data: today(), stato: 'bozza', esempio: false, creato: new Date().toISOString() };
-      for (const k of ['rev', 'revisioni', 'firma', 'dataInvio', 'richiamato', 'rate', 'extra', 'spese']) delete np[k];
+      for (const k of ['rev', 'revisioni', 'firma', 'dataInvio', 'richiamato', 'rate', 'extra', 'spese', 'agenda']) delete np[k];
       np.sezioni.forEach(s => { s.id = uid(); s.voci.forEach(v => { v.id = uid(); }); });
       openEditor(np); saveCurrent(); toast('Copia creata: preventivo ' + numStr(np)); break;
     }
@@ -1111,7 +1147,7 @@ async function onActMisure(act, b) {
   const r = S.rilievo;
   if (act === 'mNew') {
     apriRilievo({ id: uid(), nome: '', data: today(), stanze: [nuovaStanza()], creato: new Date().toISOString() });
-    setTimeout(() => { const n = $('#rl-nome'); if (n) n.focus(); }, 50);
+    { const n = $('#rl-nome'); if (n) n.focus(); } // subito: un ritardo potrebbe rubare il cursore a un altro campo
     return true;
   }
   if (!r) return false;
@@ -1364,6 +1400,39 @@ function scegliModello() {
       write('modelli', m.id, DEL); toast('Modello eliminato');
     }
   });
+}
+
+/* ---------- Cantiere in agenda ---------- */
+const GIORNI_SETT = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
+const giornoSett = isoD => GIORNI_SETT[new Date(isoD + 'T12:00:00').getDay()];
+function agFineHtml(p) {
+  const a = p.agenda || {};
+  const fine = fineLavori(a.inizio, a.giorni);
+  if (!fine) return 'Metti la data di inizio e i giorni lavorativi: la fine si calcola da sola (sabato, domenica e festivi esclusi).';
+  const parte = lavorativo(a.inizio) ? '' : ` · si parte ${giornoSett(spostaLavorativi(a.inizio, 0))} ${fmtDate(spostaLavorativi(a.inizio, 0))}`;
+  return `Fine prevista: <b>${giornoSett(fine)} ${fmtDate(fine)}</b> · ${a.giorni} ${Number(a.giorni) === 1 ? 'giorno lavorativo' : 'giorni lavorativi'}${parte}`;
+}
+function aggiornaAgenda() {
+  const p = S.current; if (!p) return;
+  const el = $('#ag-fine'); if (el) el.innerHTML = agFineHtml(p);
+  const a = p.agenda || {}; const fine = fineLavori(a.inizio, a.giorni);
+  if (fine && (p.rate || []).length) {
+    const prima = JSON.stringify(p.rate);
+    p.rate = scadenzeDaCantiere(p.rate, a.inizio, fine);
+    if (JSON.stringify(p.rate) !== prima) ridisegnaPagamenti();
+  }
+}
+async function calendarioCantiere(p) {
+  const a = p.agenda || {};
+  if (!fineLavori(a.inizio, a.giorni)) { toast('Metti prima la data di inizio e i giorni lavorativi'); return; }
+  const nome = `Cantiere ${(p.oggetto || p.cliente?.nome || 'lavori').replace(/[\\/:*?"<>|]+/g, ' ').trim()}.ics`;
+  const blob = new Blob([icsCantiere(p, S.azienda)], { type: 'text/calendar' });
+  const file = new File([blob], nome, { type: 'text/calendar' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: nome }); return; } }
+  catch (e) { if (e && e.name === 'AbortError') return; }
+  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = nome;
+  document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  toast('Apri il file scaricato per aggiungerlo al calendario');
 }
 
 /* ---------- Lavori extra (varianti) ---------- */
