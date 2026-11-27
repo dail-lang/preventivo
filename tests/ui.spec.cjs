@@ -782,6 +782,22 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2w. Copia di sicurezza completa: anche rilievi e modelli
+  {
+    const s = seedBase();
+    s.misure = [{ id: 'm1', nome: 'Appartamento Rossi', stanze: [] }];
+    s.modelli = [{ id: 'md1', nome: 'Bagno completo', sezioni: [] }];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s, { acceptDownloads: true });
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.locator('[data-view="impostazioni"]:visible').first().click();
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.locator('[data-act="backup"]:visible').first().click()]).catch(() => [null]);
+    const bk = dl ? JSON.parse(fs.readFileSync(await dl.path(), 'utf8')) : null;
+    check('copia di sicurezza: contiene rilievi e modelli', !!bk && (bk.misure || []).length === 1 && (bk.modelli || []).length === 1, bk && Object.keys(bk).join());
+    check('copia di sicurezza: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

@@ -30,7 +30,7 @@ export function num(expr) {
       while (j < s.length && /[0-9.,]/.test(s[j])) j++;
       let t = s.slice(i, j);
       if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
-      else if ((t.match(/\./g) || []).length > 1) t = t.replace(/\./g, '');
+      else if ((t.match(/\./g) || []).length > 1 || /^[1-9]\d{0,2}\.\d{3}$/.test(t)) t = t.replace(/\./g, ''); // «1.200» = milleduecento
       const v = parseFloat(t);
       if (!isFinite(v)) return NaN;
       toks.push(v); i = j; continue;

@@ -164,6 +164,7 @@ async function esci() {
 }
 
 /* ---------- Avvio ---------- */
+addEventListener('nz-archivio-bloccato', () => showScreen('attesa', '<h1>Aggiorno l\'archivio del telefono</h1><p>Chiudi le altre finestre o schede di Nazifoski ancora aperte: appena sono chiuse l\'app si apre da sola. I tuoi dati restano dove sono.</p>'));
 async function boot() {
   let app = null;
   const seed = TEST ? (window.NZ_TEST_SEED || {}) : {};
@@ -183,7 +184,10 @@ async function boot() {
     auth.onUser(onUser);
   } catch (e) {
     console.error(e);
-    showScreen('errore', '<h1>Non riesco ad aprire l\'app</h1><p>Controlla la connessione a internet e riprova.</p><button class="btn primary block" type="button" onclick="location.reload()">Riprova</button>');
+    const locale = !TEST && !app;
+    showScreen('errore', locale
+      ? `<h1>Non riesco ad aprire i dati del telefono</h1><p>Chiudi del tutto l'app (anche dalle app recenti) e riaprila. Se succede ancora, controlla che il telefono abbia spazio libero.</p><p class="help" style="font-size:13px">${esc((e && e.message) || '')}</p><button class="btn primary block" type="button" onclick="location.reload()">Riprova</button>`
+      : '<h1>Non riesco ad aprire l\'app</h1><p>Controlla la connessione a internet e riprova.</p><button class="btn primary block" type="button" onclick="location.reload()">Riprova</button>');
   }
 }
 
@@ -1878,7 +1882,7 @@ async function esportaBackup() {
   const { ...az } = S.azienda;
   let foto = [];
   try { foto = await store.all('foto'); } catch (e) { toast('Foto non incluse: non riesco a leggerle adesso'); }
-  const dati = { formato: 'nazifoski-dati', esportato: new Date().toISOString(), preventivi: S.preventivi.map(strip), listino: S.listino.map(strip), clienti: S.clienti.map(strip), foto, azienda: az };
+  const dati = { formato: 'nazifoski-dati', esportato: new Date().toISOString(), preventivi: S.preventivi.map(strip), listino: S.listino.map(strip), clienti: S.clienti.map(strip), misure: S.misure.map(strip), modelli: S.modelli.map(strip), foto, azienda: az };
   const nome = `nazifoski-dati-${today()}.json`;
   const blob = new Blob([JSON.stringify(dati, null, 1)], { type: 'application/json' });
   const file = new File([blob], nome, { type: 'application/json' });

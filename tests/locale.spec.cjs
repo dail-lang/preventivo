@@ -119,8 +119,52 @@ function serve() {
     check('aggiornamento archivio: i preventivi di prima ci sono', await p2.isVisible('text=Cliente della versione vecchia'));
     const vecchie = await p2.evaluate(async () => { const m = await import('/js/store.js'); const st = await m.localStore(); return (await st.idsWhere('foto', 'preventivoId', 'v1')).join(); }).catch(e => 'ERR ' + e.message);
     check('aggiornamento archivio: le foto di prima si ritrovano', vecchie === 'old1', vecchie);
+    const riscritta = await p2.evaluate(() => new Promise(res => { const r = indexedDB.open('nazifoski-locale'); r.onsuccess = () => { const g = r.result.transaction('docs').objectStore('docs').get('foto/old1'); g.onsuccess = () => { res('pid' in g.result); r.result.close(); }; }; }));
+    check('aggiornamento archivio: le foto non vengono riscritte (telefono quasi pieno)', riscritta === false);
     check('aggiornamento archivio: nessun errore', err2.length === 0, err2.join(' | '));
     await c2.close();
+  }
+
+  // archivio della versione intermedia (v2, già pubblicata per un'ora): passa alla v3 senza perdere niente
+  {
+    const c4 = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' });
+    const p4 = await c4.newPage(); const err4 = []; p4.on('pageerror', e => err4.push(e.message));
+    await p4.goto(base + 'manifest.webmanifest');
+    await p4.evaluate(() => new Promise((res, rej) => {
+      const r = indexedDB.open('nazifoski-locale', 2);
+      r.onupgradeneeded = () => { const s = r.result.createObjectStore('docs', { keyPath: 'path' }); s.createIndex('coll', 'coll'); s.createIndex('pid', 'pid'); };
+      r.onsuccess = () => {
+        const db = r.result; const t = db.transaction('docs', 'readwrite'); const s = t.objectStore('docs');
+        s.put({ path: 'preventivi/w2', coll: 'preventivi', id: 'w2', data: { anno: 2026, numero: 42, data: '2026-11-27', stato: 'bozza', cliente: { nome: 'Cliente della versione intermedia' }, sezioni: [], iva: 10 } });
+        s.put({ path: 'foto/w2a', coll: 'foto', id: 'w2a', pid: 'w2', data: { preventivoId: 'w2', creata: '1', dataURL: 'data:image/jpeg;base64,AAAA' } });
+        s.put({ path: 'modelli/md', coll: 'modelli', id: 'md', data: { nome: 'Bagno', sezioni: [] } });
+        t.oncomplete = () => { db.close(); res(); }; t.onerror = () => rej(t.error);
+      };
+    }));
+    await p4.goto(base);
+    await p4.waitForSelector('[data-open]', { timeout: 10000 }).catch(() => {});
+    check('archivio v2 → v3: i preventivi ci sono', await p4.isVisible('text=Cliente della versione intermedia'));
+    const r4 = await p4.evaluate(async () => { const m = await import('/js/store.js'); const st = await m.localStore(); return [(await st.idsWhere('foto', 'preventivoId', 'w2')).join(), (await st.ids('modelli')).join()].join('|'); }).catch(e => 'ERR ' + e.message);
+    check('archivio v2 → v3: foto e modelli ci sono', r4 === 'w2a|md', r4);
+    check('archivio v2 → v3: nessun errore', err4.length === 0, err4.join(' | '));
+    await c4.close();
+  }
+
+  // una finestra vecchia dell'app ancora aperta blocca l'aggiornamento: messaggio giusto, poi l'app parte da sola
+  {
+    const c3 = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' });
+    const vecchia = await c3.newPage();
+    await vecchia.goto(base + 'manifest.webmanifest');
+    await vecchia.evaluate(() => new Promise(res => { const r = indexedDB.open('nazifoski-locale', 1); r.onupgradeneeded = () => r.result.createObjectStore('docs', { keyPath: 'path' }); r.onsuccess = () => { window.__db = r.result; res(); }; }));
+    const nuova = await c3.newPage(); const err3 = []; nuova.on('pageerror', e => err3.push(e.message));
+    await nuova.goto(base);
+    await nuova.waitForTimeout(1500);
+    const txt = await nuova.textContent('body').catch(() => '');
+    check('finestra vecchia aperta: dice di chiudere le altre finestre', /chiudi/i.test(txt) && !/connessione/i.test(txt), txt.replace(/\s+/g, ' ').slice(0, 160));
+    await vecchia.evaluate(() => window.__db.close());
+    await nuova.waitForSelector('#main .head h1', { timeout: 8000 }).catch(() => {});
+    check('finestra vecchia chiusa: l\'app parte da sola', await nuova.isVisible('h1:has-text("Preventivi")').catch(() => false));
+    await c3.close();
   }
   await browser.close(); srv.close();
   console.log(failures ? `\n${failures} controlli falliti` : '\nTutti i controlli superati');

@@ -182,3 +182,14 @@ test('modelli: si salva il lavoro, non il cliente; il nuovo preventivo ha id nuo
   assert.equal(q.modello, undefined);
   q.sezioni[0].voci[0].prezzo = '1'; assert.notEqual(m.sezioni[0].voci[0].prezzo, '1', 'il modello non cambia');
 });
+
+test('num: «1.200» e «12.500» sono migliaia (come si scrive in Italia), «2.5» resta 2,5', () => {
+  assert.equal(num('1.200'), 1200);
+  assert.equal(num('12.500'), 12500);
+  assert.equal(num('1.200.000'), 1200000);
+  assert.equal(num('1.250,50'), 1250.5);
+  assert.equal(num('2.5'), 2.5);
+  assert.equal(num('1.25'), 1.25);
+  assert.equal(num('0.800'), 0.8, 'uno zero davanti non è una migliaia');
+  assert.equal(num('3*1.200'), 3600);
+});

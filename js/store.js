@@ -111,26 +111,21 @@ async function firestoreStore(app, emulator) {
 
 /** Dati nel dispositivo (IndexedDB): usata finché Firebase non è configurato. */
 const IDB_NAME = 'nazifoski-locale';
-// Versione 2: indici per collezione e per preventivo, così le foto si leggono solo quando servono.
+// Versione 3: indici per collezione e per preventivo (sul campo del documento: i dati esistenti non vengono riscritti),
+// così le foto si leggono solo quando servono.
 function idb() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open(IDB_NAME, 2);
+    const r = indexedDB.open(IDB_NAME, 3);
     r.onupgradeneeded = e => {
       const s = e.oldVersion < 1 ? r.result.createObjectStore('docs', { keyPath: 'path' }) : r.transaction.objectStore('docs');
-      if (e.oldVersion < 2) {
-        s.createIndex('coll', 'coll');
-        s.createIndex('pid', 'pid');
-        if (e.oldVersion >= 1) s.openCursor().onsuccess = ev => {
-          const c = ev.target.result; if (!c) return;
-          const v = c.value;
-          if (v.coll === 'foto' && v.data && v.pid === undefined) { v.pid = v.data.preventivoId; c.update(v); }
-          c.continue();
-        };
-      }
+      if (!s.indexNames.contains('coll')) s.createIndex('coll', 'coll');
+      if (s.indexNames.contains('pid')) s.deleteIndex('pid');
+      s.createIndex('pid', 'data.preventivoId');
     };
     r.onsuccess = () => { const db = r.result; db.onversionchange = () => db.close(); res(db); };
     r.onerror = () => rej(r.error);
-    r.onblocked = () => rej(new Error('Chiudi le altre finestre dell\'app e riaprila.'));
+    // Una finestra della versione vecchia è ancora aperta: si aspetta (parte da solo appena si chiude) e lo si dice.
+    r.onblocked = () => { try { dispatchEvent(new CustomEvent('nz-archivio-bloccato')); } catch (e) {} };
   });
 }
 const tx = (db, mode, fn) => new Promise((res, rej) => {
@@ -162,7 +157,7 @@ export async function localStore() {
     async save(c, id, d) {
       if (c !== 'foto') return save(c, id, d);
       const { id: _i, ...rest } = d;
-      await tx(db, 'readwrite', s => s.put({ path: 'foto/' + id, coll: 'foto', id, pid: rest.preventivoId, data: structuredClone(rest) }));
+      await tx(db, 'readwrite', s => s.put({ path: 'foto/' + id, coll: 'foto', id, data: structuredClone(rest) }));
       avvisa();
     },
     async remove(c, id) {
@@ -213,15 +208,7 @@ export async function importa(store, dati) {
   for (const c of COLLEZIONI) {
     const rows = Array.isArray(dati[c]) ? dati[c] : [];
     if (!rows.length) continue;
-    if (c === 'foto') {
-      // id unici: niente controllo (eviterebbe di scaricare tutte le foto); 10 alla volta per non intasare la rete
-      const valide = rows.filter(r => r && r.id);
-      for (let i = 0; i < valide.length; i += 10) {
-        await Promise.all(valide.slice(i, i + 10).map(({ id, ...rest }) => store.save('foto', id, rest)));
-      }
-      creati += valide.length;
-      continue;
-    }
+    if (c === 'foto') continue; // per ultime, dopo le impostazioni
     const esistenti = new Set(await store.ids(c));
     for (const r of rows) {
       if (!r || !r.id) continue;
@@ -235,5 +222,12 @@ export async function importa(store, dati) {
     const esiste = (await store.ids('impostazioni')).includes('azienda');
     if (esiste) saltati++; else { store.save('impostazioni', 'azienda', dati.azienda); creati++; }
   }
+  // Foto per ultime (se il trasferimento si interrompe, il resto è già arrivato). Id unici: niente controllo,
+  // che scaricherebbe tutte le foto; 10 alla volta per non intasare la rete.
+  const foto = (Array.isArray(dati.foto) ? dati.foto : []).filter(r => r && r.id);
+  for (let i = 0; i < foto.length; i += 10) {
+    await Promise.all(foto.slice(i, i + 10).map(({ id, ...rest }) => store.save('foto', id, rest)));
+  }
+  creati += foto.length;
   return { creati, saltati };
 }

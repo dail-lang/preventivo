@@ -115,3 +115,12 @@ test('importa: le foto non scaricano tutto per controllare gli id e vanno a grup
   assert.ok(max <= 10, 'al massimo 10 foto alla volta, erano ' + max);
   assert.equal(r.creati, 26);
 });
+
+test('importa: le foto vanno per ultime (se si interrompe, il resto è già arrivato)', async () => {
+  const dst = await createStore('memory');
+  const ordine = []; const save = dst.save.bind(dst);
+  dst.save = async (c, id, d) => { ordine.push(c); return save(c, id, d); };
+  await importa(dst, { preventivi: [{ id: 'p1' }], foto: [{ id: 'f1', preventivoId: 'p1' }], misure: [{ id: 'm1' }], modelli: [{ id: 'md1' }], azienda: { ragione: 'X' } });
+  assert.equal(ordine[ordine.length - 1], 'foto', ordine.join());
+  assert.ok(ordine.indexOf('impostazioni') < ordine.indexOf('foto'));
+});
