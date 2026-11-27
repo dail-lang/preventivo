@@ -354,12 +354,22 @@ select.in { appearance: none; -webkit-appearance: none; background-image: linear
 .rl-ris b { font-family: var(--display); font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .rl-add { width: 100%; margin-top: 12px; }
 .rl-totc { margin-top: 12px; }
+.rl-prev { width: 100%; margin-top: 12px; }
 .rl-totc .rl-ris span { background: var(--blue-tint); }
 @media (max-width: 560px) { .rl-ris { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .fi-prev { display: flex; justify-content: center; padding: 12px; border: 1px dashed var(--line); border-radius: 12px; background: #fff; margin-bottom: 12px; }
 .fi-prev img { max-width: 100%; max-height: 120px; display: block; }
 .nm-row { display: flex; gap: 6px; align-items: center; }
 .nm-row .pick { flex: 1; }
+.rp-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.rp-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.rp-sel { font-size: 14px; min-height: 40px; }
+.rp-row .check { flex: 1; min-width: 0; align-items: flex-start; }
+.rp-row .check span { display: flex; flex-direction: column; min-width: 0; }
+.rp-row small { color: var(--stone); font-size: 12.5px; }
+.rp-pr { display: flex; align-items: center; gap: 4px; flex: none; }
+.rp-pr .in { width: 84px; }
+.rp-pr span { font-size: 12.5px; color: var(--stone); width: 34px; }
 .rev-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .rev-bar .btn { flex: 1 1 auto; }
 .rv-item { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--line-soft); }

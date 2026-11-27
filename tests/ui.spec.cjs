@@ -688,6 +688,34 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2t. Preventivo da un rilievo
+  {
+    const s = seedBase();
+    s.listino = [{ id: 'lp', categoria: 'Massetti e pavimenti', desc: 'Posa pavimento in gres porcellanato', um: 'mq', prezzo: 35 }];
+    s.misure = [{ id: 'm1', nome: 'Appartamento Rossi', data: '2026-11-27', stanze: [{ nome: 'Bagno', l: '4', p: '3,5', h: '2,70', aperture: [] }, { nome: 'Cucina', l: '3', p: '3', h: '2,70', aperture: [] }] }];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.locator('[data-view="misure"]:visible').first().click();
+    await page.click('[data-rl="m1"]').catch(() => {});
+    await page.click('[data-act="mPreventivo"]').catch(() => {});
+    await page.waitForSelector('#rp', { timeout: 3000 }).catch(() => {});
+    check('da rilievo: prezzo del pavimento preso dal listino', (await page.inputValue('#rp [data-lp="pavimento"]').catch(() => '')) === '35');
+    await page.selectOption('#rp [data-lv="rivestimento"]', '').catch(() => {});
+    check('da rilievo: scegliendo dalla tendina il lavoro si spunta', await page.isChecked('#rp [data-lav="rivestimento"]').catch(() => false));
+    await page.click('#rp-ok').catch(() => {});
+    await page.waitForTimeout(500);
+    const tit = await page.$$eval('#sezioni [data-s="titolo"]', a => a.map(x => x.value)).catch(() => []);
+    check('da rilievo: una sezione per stanza', tit.join() === 'Bagno,Cucina', tit.join());
+    const v0 = await page.$$eval('[data-sez="0"] .voce', a => a.map(v => [v.querySelector('[data-v="desc"]').value, v.querySelector('[data-v="qta"]').value, v.querySelector('[data-v="prezzo"]').value].join('|'))).catch(() => []);
+    check('da rilievo: pavimento dal listino, quantità calcolata', v0[0] === 'Posa pavimento in gres porcellanato|4*3,5|35', v0.join(' / '));
+    check('da rilievo: battiscopa in metri dal perimetro', v0.some(x => /battiscopa/i.test(x) && x.includes('|2*(4+3,5)|')), v0.join(' / '));
+    check('da rilievo: rivestimento generico sulle pareti', (await page.$$eval('[data-sez="0"] .voce', a => a.map(v => v.querySelector('[data-v="desc"]').value + '|' + v.querySelector('[data-v="qta"]').value))).includes('Fornitura e posa rivestimento pareti|2*(4+3,5)*2,7'));
+    check('da rilievo: oggetto = nome del rilievo', (await page.inputValue('#f-ogg').catch(() => '')) === 'Appartamento Rossi');
+    check('da rilievo: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

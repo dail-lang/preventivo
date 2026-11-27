@@ -4,7 +4,7 @@ import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
 import { LISTINO_RIMINI, pianoListino } from './listino-rimini.js';
-import { areeStanza, espressione, perimetro, totaliStanze } from './misure.js';
+import { areeStanza, espressione, perimetro, totaliStanze, LAVORAZIONI, vociPerLavorazione, sezioniDaRilievo } from './misure.js';
 import { VERSIONE } from './versione.js';
 import { firebaseConfig } from '../firebase-config.js';
 
@@ -1044,7 +1044,8 @@ function renderRilievo() {
     </section>
     <div id="rl-stanze" class="rl-stanze">${(r.stanze || []).map(stanzaHtml).join('')}</div>
     <button class="btn rl-add" type="button" data-act="mStanza">${IC.plus} Aggiungi stanza</button>
-    <section class="card rl-totc"><h2>Totale ${(r.stanze || []).length > 1 ? `di ${r.stanze.length} stanze` : ''}</h2><div class="rl-ris" id="rl-tot">${totHtml(r)}</div></section>`;
+    <section class="card rl-totc"><h2>Totale ${(r.stanze || []).length > 1 ? `di ${r.stanze.length} stanze` : ''}</h2><div class="rl-ris" id="rl-tot">${totHtml(r)}</div>
+      <button class="btn primary rl-prev" type="button" data-act="mPreventivo">${IC.doc} Crea preventivo con queste misure</button></section>`;
   enter();
 }
 function totHtml(r) { const t = totaliStanze(r.stanze); return risultatiHtml(t, t.perimetro); }
@@ -1080,6 +1081,7 @@ async function onActMisure(act, b) {
       if (piena && !(await confirmBox('Togliere questa stanza?', `${s.nome || 'La stanza ' + (si + 1)} viene tolta dal rilievo.`, 'Togli'))) return true;
       r.stanze.splice(si, 1); if (!r.stanze.length) r.stanze.push(nuovaStanza()); ridisegna(); return true;
     }
+    case 'mPreventivo': flushRilievo(); preventivoDaRilievo(r); return true;
     case 'mAp': r.stanze[si].aperture.push({ l: '', h: '', n: '1' }); ridisegna(`[data-st="${si}"] [data-ap="${r.stanze[si].aperture.length - 1}"] [data-k="al"]`); return true;
     case 'mApDel': r.stanze[si].aperture.splice(+b.closest('[data-ap]').dataset.ap, 1); ridisegna(); return true;
     case 'mDel':
@@ -1091,6 +1093,44 @@ async function onActMisure(act, b) {
       return true;
   }
   return false;
+}
+
+function preventivoDaRilievo(r) {
+  if (!(r.stanze || []).some(s => num(s.l) > 0 && num(s.p) > 0)) { toast('Scrivi prima lunghezza e larghezza di almeno una stanza'); return; }
+  const righe = LAVORAZIONI.map(l => ({ l, opz: vociPerLavorazione(l, S.listino) }));
+  const scelta = (l, opz) => { const sel = $(`#rp [data-lv="${l.k}"]`); return sel && sel.value !== '' ? opz[+sel.value] : null; };
+  openModal(`<div class="sheet" id="rp" role="dialog" aria-modal="true" aria-labelledby="rp-t">
+    <div class="sheet-h"><h2 id="rp-t">Preventivo da «${esc(r.nome || 'rilievo')}»</h2><button class="icon-btn" type="button" data-close="no" aria-label="Chiudi">${IC.x}</button></div>
+    <div class="sheet-b">
+      <p class="help" style="margin:0;font-size:13.5px;color:var(--stone)">Scegli i lavori: per ogni stanza le quantità si calcolano dalle misure. Il prezzo arriva dal listino quando c'è; puoi cambiarlo qui o dopo.</p>
+      ${righe.map(({ l, opz }) => { const v = opz[0]; return `<div class="rp-row">
+        <div class="rp-top"><label class="check"><input type="checkbox" data-lav="${l.k}"${l.si ? ' checked' : ''}> <b>${esc(l.nome)}</b></label>
+        <label class="rp-pr"><input class="in r" data-lp="${l.k}" inputmode="decimal" value="${esc(v && v.prezzo != null ? String(v.prezzo).replace('.', ',') : '')}" placeholder="prezzo" aria-label="Prezzo ${esc(l.nome)}"><span>€/${l.um}</span></label></div>
+        <select class="in rp-sel" data-lv="${l.k}" aria-label="Voce per ${esc(l.nome)}">${opz.map((o, i) => `<option value="${i}">${esc(o.desc)}${o.prezzo != null ? ' — ' + fmtEur(Number(o.prezzo)) : ''}</option>`).join('')}<option value="">${esc(l.desc)} (voce generica)</option></select>
+      </div>`; }).join('')}
+    </div>
+    <div class="sheet-f"><button class="btn" type="button" data-close="no">Annulla</button><button class="btn primary" type="button" id="rp-ok">Crea preventivo</button></div>
+  </div>`);
+  $('#rp').addEventListener('change', e => {
+    const k = e.target.dataset && e.target.dataset.lv; if (!k) return;
+    const r0 = righe.find(x => x.l.k === k); const v = scelta(r0.l, r0.opz);
+    $(`#rp [data-lp="${k}"]`).value = v && v.prezzo != null ? String(v.prezzo).replace('.', ',') : '';
+    $(`#rp [data-lav="${k}"]`).checked = true;
+  });
+  $('#rp-ok').onclick = () => {
+    const scelte = righe.filter(({ l }) => $(`#rp [data-lav="${l.k}"]`).checked).map(({ l, opz }) => ({ l, v: scelta(l, opz) })).map(({ l, v }) => ({
+      desc: v ? v.desc : l.desc, um: l.um, tipo: l.tipo, prezzo: $(`#rp [data-lp="${l.k}"]`).value.trim(), costo: v && v.costo != null ? String(v.costo).replace('.', ',') : ''
+    }));
+    if (!scelte.length) { toast('Scegli almeno un lavoro'); return; }
+    const sezioni = sezioniDaRilievo(r, scelte, uid);
+    if (!sezioni.length) { toast('Nessuna stanza con le misure complete'); return; }
+    closeModal(true);
+    const np = nuovoPreventivo();
+    Object.assign(np, { oggetto: r.nome || '', sezioni, rilievoId: r.id });
+    S.rilievo = null; closeLayer('rilievo');
+    openEditor(np); saveCurrent();
+    toast('Preventivo creato dalle misure: controlla i prezzi e aggiungi il cliente');
+  };
 }
 
 /* ---------- Misure delle stanze ---------- */

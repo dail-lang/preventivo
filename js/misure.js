@@ -1,6 +1,6 @@
 // Misure delle stanze: aree di pavimento, soffitto e pareti (meno porte e finestre),
 // e l'espressione da scrivere nella Quantità così il calcolo resta visibile e modificabile.
-import { num, round2 } from './calc.js';
+import { num, round2, suggerisci } from './calc.js';
 
 const val = x => { const n = typeof x === 'number' ? x : num(x); return isFinite(n) && n > 0 ? n : 0; };
 const t = n => String(round2(n)).replace('.', ',');
@@ -23,6 +23,7 @@ function termini(st, tipo) {
   if (tipo === 'pavimento' || tipo === 'soffitto') return [pav];
   if (tipo === 'pareti') return par ? [par] : [];
   if (tipo === 'pareti+soffitto') return [par, pav].filter(Boolean);
+  if (tipo === 'perimetro') return [`2*(${t(L)}+${t(P)})`];
   return [];
 }
 
@@ -48,4 +49,35 @@ export function totaliStanze(stanze) {
   }
   for (const k in t) t[k] = round2(t[k]);
   return t;
+}
+
+/* Preventivo da un rilievo: le lavorazioni più comuni, con la quantità giusta per ogni stanza. */
+export const LAVORAZIONI = [
+  { k: 'pavimento', nome: 'Pavimento', desc: 'Fornitura e posa pavimento', um: 'mq', tipo: 'pavimento', cerca: ['posa pavimento', 'pavimento'], si: true },
+  { k: 'rivestimento', nome: 'Rivestimento pareti', desc: 'Fornitura e posa rivestimento pareti', um: 'mq', tipo: 'pareti', cerca: ['posa rivestimento', 'rivestimento'] },
+  { k: 'tinteggiatura', nome: 'Tinteggiatura pareti e soffitto', desc: 'Tinteggiatura pareti e soffitto, due mani', um: 'mq', tipo: 'pareti+soffitto', cerca: ['tinteggiatura', 'idropittura', 'pittura'], si: true },
+  { k: 'battiscopa', nome: 'Battiscopa', desc: 'Fornitura e posa battiscopa', um: 'ml', tipo: 'perimetro', cerca: ['battiscopa', 'zoccolino'], si: true },
+  { k: 'massetto', nome: 'Massetto', desc: 'Massetto di sottofondo', um: 'mq', tipo: 'pavimento', cerca: ['massetto'] }
+];
+const DA_EVITARE = /demoli|rimozion|smantell|smaltim|asportaz/i;
+/** La voce del listino che corrisponde alla lavorazione (mai una demolizione), o null. */
+export function cercaNelListino(lav, listino) { return vociPerLavorazione(lav, listino)[0] || null; }
+/** Tutte le voci del listino adatte alla lavorazione (la migliore prima), senza demolizioni. */
+export function vociPerLavorazione(lav, listino, max = 8) {
+  const out = [];
+  for (const q of lav.cerca || []) for (const v of suggerisci(q, listino, 20)) {
+    if (DA_EVITARE.test(v.desc || '') || (v.um && v.um !== lav.um) || out.includes(v)) continue;
+    out.push(v);
+  }
+  return out.slice(0, max);
+}
+/** Una sezione per stanza (solo quelle con lunghezza e larghezza), una voce per lavorazione scelta. */
+export function sezioniDaRilievo(rilievo, scelte, nuovoId) {
+  return (rilievo.stanze || []).map((s, i) => ({ s, i })).filter(({ s }) => val(s.l) && val(s.p)).map(({ s, i }) => {
+    const stanza = { l: s.l, p: s.p, h: s.h, aperture: (s.aperture || []).map(a => ({ ...a })) };
+    const voci = scelte.map(c => ({ c, qta: espressione([stanza], c.tipo) })).filter(x => x.qta).map(({ c, qta }) => ({
+      id: nuovoId(), desc: c.desc, um: c.um, qta, prezzo: String(c.prezzo ?? ''), ...(c.costo !== undefined && c.costo !== '' ? { costo: String(c.costo) } : {}), misure: [JSON.parse(JSON.stringify(stanza))]
+    }));
+    return { id: nuovoId(), titolo: (s.nome || '').trim() || `Stanza ${i + 1}`, voci };
+  }).filter(x => x.voci.length);
 }

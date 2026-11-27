@@ -32,3 +32,23 @@ test('perimetro (battiscopa) e totali di tutte le stanze', () => {
   assert.deepEqual(totaliStanze([st, { l: 3, p: 3, h: 2.7, aperture: [] }, { l: '', p: '' }]), { pavimento: 23, soffitto: 23, pareti: 69.54, perimetro: 27 });
   assert.deepEqual(totaliStanze([]), { pavimento: 0, soffitto: 0, pareti: 0, perimetro: 0 });
 });
+
+import { sezioniDaRilievo } from '../js/misure.js';
+test('espressione del perimetro (battiscopa)', () => {
+  assert.equal(espressione([st], 'perimetro'), '2*(4+3,5)');
+  assert.equal(num(espressione([st, { l: 3, p: 3 }], 'perimetro')), 27);
+});
+test('sezioniDaRilievo: una sezione per stanza, quantità calcolate, prezzi scelti', () => {
+  const ril = { nome: 'Appartamento Rossi', stanze: [{ nome: 'Bagno', ...st }, { nome: '', l: 3, p: 3, h: 2.7, aperture: [] }, { nome: 'Vuota', l: '', p: '' }] };
+  const scelte = [
+    { desc: 'Posa pavimento in gres', um: 'mq', tipo: 'pavimento', prezzo: '35' },
+    { desc: 'Battiscopa', um: 'ml', tipo: 'perimetro', prezzo: '' }
+  ];
+  let n = 0;
+  const sez = sezioniDaRilievo(ril, scelte, () => 'id' + (++n));
+  assert.deepEqual(sez.map(s => s.titolo), ['Bagno', 'Stanza 2'], 'le stanze senza misure non entrano');
+  assert.deepEqual(sez[0].voci.map(v => [v.desc, v.um, v.qta, v.prezzo]), [['Posa pavimento in gres', 'mq', '4*3,5', '35'], ['Battiscopa', 'ml', '2*(4+3,5)', '']]);
+  assert.equal(sez[0].voci[0].misure[0].l, 4, 'la voce ricorda le misure della stanza');
+  assert.ok(sez[0].id && sez[0].voci[0].id && sez[0].voci[0].id !== sez[0].voci[1].id);
+  assert.deepEqual(sezioniDaRilievo({ stanze: [] }, scelte, () => 'x'), []);
+});
