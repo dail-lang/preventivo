@@ -67,3 +67,14 @@ test('PDF: numero con «rev. 2» e nome file con rev', () => {
   assert.match(fileName(p), /2026-007 rev2/);
   assert.doesNotMatch(fileName({ ...p, rev: 1 }), /rev\d/);
 });
+
+test('PDF: firma del cliente nello spazio «Per accettazione»', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const p = { ...base(), firma: { png, nome: 'Mario Rossi', data: '2026-11-26' } };
+  const s = JSON.stringify(buildDoc(p, { ragione: 'X', firma: false }, null));
+  assert.ok(s.includes('PER ACCETTAZIONE'), 'firme visibili anche se spente nelle impostazioni');
+  assert.ok(s.includes('Firmato da Mario Rossi il 26/11/2026'));
+  assert.ok(s.includes(png));
+  const senza = JSON.stringify(buildDoc({ ...base(), firma: undefined }, { ragione: 'X', firma: false }, null));
+  assert.ok(!senza.includes('PER ACCETTAZIONE') && !senza.includes('Firmato da'));
+});

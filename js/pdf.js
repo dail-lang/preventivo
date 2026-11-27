@@ -45,6 +45,7 @@ const ICON = {
   open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></svg>',
   dl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
   wa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.8 7L4 20l1.1-4A8 8 0 1 1 20 12z"/></svg>',
+  firma: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17c3-4 5-9 7-9 2.5 0-1 9 1.5 9 1.8 0 2.5-3 4-3 1.2 0 1 2 2.5 2H21"/><path d="M3 21h18"/></svg>',
   sent: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>'
 };
 
@@ -58,7 +59,8 @@ export function closePreview(fromBack) {
   if (!fromBack && s && s.onClose) s.onClose();
 }
 
-export async function openPreview(p, a, { onClose, onSent, onShared, toast, messaggio = '', telefono = '' } = {}) {
+export async function openPreview(p, a, opts = {}) {
+  const { onClose, onSent, onShared, onFirma, toast, messaggio = '', telefono = '' } = opts;
   const pv = $('#preview');
   const name = fileName(p);
   state = { onClose, url: null };
@@ -74,6 +76,7 @@ export async function openPreview(p, a, { onClose, onSent, onShared, toast, mess
         <a class="btn" id="pv-dl" download="${esc(name)}">${ICON.dl} Scarica</a>
         <a class="btn" id="pv-wa" target="_blank" rel="noopener" hidden>${ICON.wa} WhatsApp</a>
         ${p.stato === 'bozza' && !p.esempio ? `<button class="btn" type="button" id="pv-sent">${ICON.sent} Inviato</button>` : ''}
+        ${onFirma && !p.firma && !p.esempio ? `<button class="btn" type="button" id="pv-firma" data-act="firma">${ICON.firma} Firma</button>` : ''}
       </div>
     </div></div>
     <div class="pages" id="pv-pages"><p class="msg-c">Impagino il preventivo…</p></div>`;
@@ -111,6 +114,11 @@ export async function openPreview(p, a, { onClose, onSent, onShared, toast, mess
     }
     const sent = $('#pv-sent');
     if (sent) sent.onclick = () => { sent.remove(); if (onSent) onSent(); };
+    const fb = $('#pv-firma');
+    if (fb) fb.onclick = async () => {
+      const np = await onFirma();
+      if (np && state === my) { if (my.url) URL.revokeObjectURL(my.url); openPreview(np, a, opts); }
+    };
     $('#pv-actions').hidden = false;
     await Promise.all([loadScript(VENDOR.worker), loadScript(VENDOR.pdfjs)]);
     if (state !== my) return;
@@ -297,9 +305,13 @@ export function buildDoc(p, a, logoB64) {
   const pag = [(p.pagamento || '').trim(), a.iban ? 'Coordinate bancarie (IBAN): ' + a.iban : ''].filter(Boolean).join('\n');
   if (pag) content.push(sec('Modalità di pagamento', pag));
   if ((p.note || '').trim()) content.push(sec('Note ed esclusioni', p.note.trim()));
-  if (a.firma) {
+  const fc = p.firma && p.firma.png ? p.firma : null;
+  if (a.firma || fc) {
     const sig = (t, sub) => ({ width: '*', stack: [label(t), { text: sub, fontSize: 8.4, color: C.soft }, rule(C.ink, 0.6, 30, [0, 0, 0, 0])] });
-    content.push({ unbreakable: true, margin: [0, 18, 0, 0], columns: [sig('Per l\'impresa', a.ragione || ''), sig('Per accettazione', 'Il cliente (data e firma)')], columnGap: 40 });
+    const cliente = fc
+      ? { width: '*', stack: [label('Per accettazione'), { text: `Firmato da ${fc.nome || 'il cliente'} il ${fmtDate(fc.data)}`, fontSize: 8.4, color: C.soft }, { image: fc.png, fit: [170, 46], margin: [0, 2, 0, 0] }, rule(C.ink, 0.6, 0, [0, 0, 0, 0])] }
+      : sig('Per accettazione', 'Il cliente (data e firma)');
+    content.push({ unbreakable: true, margin: [0, 18, 0, 0], columns: [sig('Per l\'impresa', a.ragione || ''), cliente], columnGap: 40 });
   }
 
   const footerText = [a.ragione, a.indirizzo, a.piva && 'P.IVA ' + a.piva, a.telefono].filter(Boolean).join('  ·  ');

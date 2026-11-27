@@ -476,6 +476,7 @@ function renderEditor() {
         <label class="field"><span>Data</span><input class="in" id="f-data" type="date" data-f="data" value="${esc(p.data)}"></label>
         <label class="field"><span>Stato</span><select class="in" id="f-stato" data-f="stato">${opt(STATI, p.stato)}</select></label>
       </div>
+      ${firmaEditor(p)}
       ${p.esempio ? '' : `<div class="rev-bar">
         <button class="btn" type="button" data-act="revisione">${IC.plus} Nuova revisione</button>
         ${(p.revisioni || []).length ? `<button class="btn" type="button" data-act="revisioni">Revisioni precedenti (${p.revisioni.length})</button>` : ''}
@@ -947,6 +948,10 @@ function apriMisure(si, vi) {
   });
 }
 
+function firmaEditor(p) {
+  return p.firma ? `<div class="note firma-ed" id="firma-ed" style="margin:12px 0 0">${IC.check}<span>Firmato da <b>${esc(p.firma.nome || 'il cliente')}</b> il ${esc(fmtDate(p.firma.data))}. Per cambiare qualcosa fai una nuova revisione: andrà rifirmato.</span></div>` : '<span id="firma-ed" hidden></span>';
+}
+
 /* ---------- Pagamenti ---------- */
 const eur2 = n => (isFinite(n) ? fmtNum(n, 2) : '');
 function pagamentiHtml(p) {
@@ -1031,6 +1036,19 @@ async function openPreview(versione) {
       onClose: () => closeLayer('preview'),
       onSent: () => { segnaInviato(); toast('Preventivo segnato come inviato'); },
       onShared: () => { segnaInviato(); },
+      onFirma: versione ? null : async () => {
+        const { apriFirma, chiudiFirma } = await import('./firma.js');
+        openLayer('firma', () => chiudiFirma());
+        const f = await apriFirma({ nome: (p.cliente && p.cliente.nome) || '' });
+        closeLayer('firma');
+        if (!f || !S.current || S.current.id !== p.id) return null;
+        S.current.firma = f; S.current.stato = 'accettato';
+        saveCurrent();
+        const sel = $('#f-stato'); if (sel) sel.value = 'accettato';
+        const fe = $('#firma-ed'); if (fe) fe.outerHTML = firmaEditor(S.current);
+        toast('Firmato: il preventivo è «Accettato»');
+        return clone(S.current);
+      },
       messaggio: messaggioInvio(S.azienda.messaggio || MESSAGGIO_BASE, p, S.azienda),
       telefono: (p.cliente && p.cliente.telefono) || '',
       toast

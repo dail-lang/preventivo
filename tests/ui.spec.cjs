@@ -360,6 +360,39 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2j. Firma del cliente sul telefono
+  {
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', seedBase());
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('.totbar [data-act="preview"]');
+    await page.waitForSelector('#pv-actions:not([hidden])', { timeout: 30000 }).catch(() => {});
+    await page.click('#pv-actions [data-act="firma"]').catch(() => {});
+    await page.waitForSelector('#fi-pad', { timeout: 3000 }).catch(() => {});
+    check('firma: «Conferma» spento finché non si firma', await page.isDisabled('#fi-ok').catch(() => false));
+    const bx = await page.$eval('#fi-pad', e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }).catch(() => null);
+    if (bx) {
+      await page.mouse.move(bx.x + bx.w * 0.2, bx.y + bx.h * 0.6); await page.mouse.down();
+      for (let i = 1; i <= 12; i++) await page.mouse.move(bx.x + bx.w * (0.2 + i * 0.05), bx.y + bx.h * (0.6 - Math.sin(i / 2) * 0.25));
+      await page.mouse.up();
+    }
+    await page.fill('#fi-nome', 'Mario Rossi').catch(() => {});
+    check('firma: dopo il tratto «Conferma» si accende', !(await page.isDisabled('#fi-ok').catch(() => true)));
+    await page.evaluate(() => { const pm = window.pdfMake; if (!pm) return; const o = pm.createPdf.bind(pm); pm.createPdf = (dd, ...r) => { window.__dd = JSON.stringify(dd); return o(dd, ...r); }; });
+    await page.click('#fi-ok').catch(() => {});
+    await page.waitForFunction(() => window.__dd, null, { timeout: 15000 }).catch(() => {});
+    const dd = await page.evaluate(() => window.__dd || '');
+    check('firma: il PDF rifatto contiene «Firmato da Mario Rossi»', dd.includes('Firmato da Mario Rossi') && dd.includes('data:image/png;base64,'));
+    await page.waitForSelector('#pv-actions:not([hidden])', { timeout: 15000 }).catch(() => {});
+    await page.click('#pv-close').catch(() => {});
+    await page.waitForTimeout(400);
+    check('firma: il preventivo è «Accettato»', (await page.inputValue('#f-stato').catch(() => '')) === 'accettato');
+    check('firma: nell\'editor «Firmato da Mario Rossi»', (await page.textContent('#main').catch(() => '')).includes('Firmato da Mario Rossi'));
+    check('firma: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();
