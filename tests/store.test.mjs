@@ -87,6 +87,13 @@ test('idsWhere: id delle foto di un preventivo, anche senza averle aperte', asyn
   assert.deepEqual((await st.idsWhere('foto', 'preventivoId', 'p1')).sort(), ['f1', 'f3']);
 });
 
+test('note dell\'agenda: nella copia di sicurezza e nel trasferimento', async () => {
+  const st = await createStore('memory', { seed: { noteAgenda: [{ id: 'n1', data: '2026-11-27', testo: 'Consegna piastrelle', fatto: false }] } });
+  assert.equal(st.exportAll().noteAgenda.length, 1);
+  const dst = await createStore('memory'); await importa(dst, st.exportAll());
+  assert.deepEqual(await dst.ids('noteAgenda'), ['n1']);
+});
+
 test('modelli: nella copia di sicurezza', async () => {
   const st = await createStore('memory', { seed: { modelli: [{ id: 'md1', nome: 'Bagno' }] } });
   assert.equal(st.exportAll().modelli.length, 1);

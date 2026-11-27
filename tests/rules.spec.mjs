@@ -81,6 +81,11 @@ test('modelli: autorizzati sì, estranei no', async () => {
   await assertFails(getDoc(doc(ctx('x', 'sconosciuto@example.com'), 'modelli/md1')));
 });
 
+test('note dell\'agenda: autorizzati sì, estranei no', async () => {
+  await assertSucceeds(setDoc(doc(ctx('m', 'moglie@example.com'), 'noteAgenda/n1'), { data: '2026-11-27', testo: 'Consegna', fatto: false }));
+  await assertFails(getDoc(doc(ctx('x', 'sconosciuto@example.com'), 'noteAgenda/n1')));
+});
+
 test('collezioni non previste: chiuse anche al titolare', async () => {
   const db = ctx('o', OWNER);
   await assertFails(setDoc(doc(db, 'altro/x'), { a: 1 }));

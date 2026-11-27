@@ -787,6 +787,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     const s = seedBase();
     s.misure = [{ id: 'm1', nome: 'Appartamento Rossi', stanze: [] }];
     s.modelli = [{ id: 'md1', nome: 'Bagno completo', sezioni: [] }];
+    s.noteAgenda = [{ id: 'n1', data: '2026-11-27', testo: 'Consegna piastrelle', fatto: false }];
     const { page, ctx, errors } = await open(browser, 'Pixel 7', s, { acceptDownloads: true });
     page.setDefaultTimeout(5000);
     await page.waitForSelector('[data-open]');
@@ -794,6 +795,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.locator('[data-act="backup"]:visible').first().click()]).catch(() => [null]);
     const bk = dl ? JSON.parse(fs.readFileSync(await dl.path(), 'utf8')) : null;
     check('copia di sicurezza: contiene rilievi e modelli', !!bk && (bk.misure || []).length === 1 && (bk.modelli || []).length === 1, bk && Object.keys(bk).join());
+    check('copia di sicurezza: contiene le note dell\'agenda', !!bk && (bk.noteAgenda || []).length === 1, bk && Object.keys(bk).join());
     check('copia di sicurezza: nessun errore', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
@@ -865,6 +867,57 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await page.click('.ed-top [data-act="back"]'); await page.waitForTimeout(500);
     await page.click('[data-open="acorpo"]'); await page.waitForTimeout(300);
     check('agenda: dati salvati', (await page.inputValue('#agenda [data-ag="note"]').catch(() => '')) === 'Chiavi dalla vicina');
+    check('agenda: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  // 2za. Pagina Agenda e note dei giorni
+  {
+    const ag = await import('../js/agenda.js');
+    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const oggi = d(0);
+    const s = seedBase();
+    s.preventivi = [
+      { ...fx.acorpo, id: 'incorso', numero: 51, stato: 'accettato', cliente: { nome: 'Rossi Mario' }, oggetto: 'Bagno', cantiere: 'Via Roma 3', agenda: { inizio: ag.spostaLavorativi(oggi, -2), giorni: 10, chi: 'Ardit e Luca', note: 'Chiavi dalla vicina' } },
+      { ...fx.acorpo, id: 'senzadata', numero: 52, stato: 'accettato', cliente: { nome: 'Neri Paolo' }, oggetto: 'Cucina' },
+      { ...fx.acorpo, id: 'bozza', numero: 53, stato: 'bozza' }
+    ];
+    s.noteAgenda = [{ id: 'vecchia', data: d(-3), testo: 'Ordinare il silicone', fatto: false, creata: '1' }];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    const ban = await page.textContent('#agenda-banner').catch(() => '');
+    check('agenda: riquadro in cima ai Preventivi', /1 cantiere in corso/.test(ban) && /1 (lavoro )?da programmare/.test(ban), ban);
+    await page.click('#agenda-banner').catch(() => {});
+    await page.waitForTimeout(300);
+    check('agenda: pagina della settimana', /Settimana dal/.test(await page.textContent('.ed-top h1').catch(() => '')));
+    const txt = await page.textContent('#main').catch(() => '');
+    check('agenda: cantiere in corso con giorno, chi e note', txt.includes('Rossi Mario') && / di 10/.test(txt) && txt.includes('Ardit e Luca') && txt.includes('Chiavi dalla vicina'), txt.slice(0, 200));
+    check('agenda: nota passata non fatta in cima', (await page.textContent('#ag-indietro').catch(() => '')).includes('Ordinare il silicone'));
+    check('agenda: «Da programmare» con il lavoro senza data', (await page.textContent('#ag-programma').catch(() => '')).includes('Neri Paolo') && !txt.includes('2026/053'));
+    const h1 = await page.textContent('.ed-top h1');
+    await page.click('[data-act="agSucc"]').catch(() => {});
+    await page.waitForTimeout(200);
+    const h2 = await page.textContent('.ed-top h1');
+    await page.click('[data-act="agOggi"]').catch(() => {});
+    await page.waitForTimeout(200);
+    check('agenda: frecce tra le settimane e «Oggi»', h1 !== h2 && (await page.textContent('.ed-top h1')) === h1, h1 + ' / ' + h2);
+    await page.click('[data-act="agNota"]').catch(() => {});
+    await page.waitForSelector('#an', { timeout: 3000 }).catch(() => {});
+    await page.fill('#an-data', oggi).catch(() => {});
+    await page.fill('#an-testo', 'Consegna piastrelle Ceramiche X').catch(() => {});
+    await page.click('#an [type="submit"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('agenda: nota aggiunta nel giorno', (await page.textContent('#ag-note').catch(() => '')).includes('Consegna piastrelle Ceramiche X'));
+    await page.click('#ag-indietro [data-act="notaFatto"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('agenda: spuntata, sparisce dalle rimaste indietro', !(await page.textContent('#main').catch(() => '')).includes('Ordinare il silicone') || !(await page.$('#ag-indietro')));
+    await page.click('#ag-programma [data-open="senzadata"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('agenda: «Metti la data» apre il preventivo sul riquadro del cantiere', await page.isVisible('#agenda [data-ag="inizio"]').catch(() => false));
+    await page.click('.ed-top [data-act="back"]').catch(() => {});
+    await page.waitForTimeout(500);
+    check('agenda: dal preventivo si torna all\'agenda', /Settimana dal/.test(await page.textContent('.ed-top h1').catch(() => '')));
     check('agenda: nessun errore', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }

@@ -42,6 +42,8 @@ service cloud.firestore {
     match /misure/{id}     { allow read, write: if isAllowed(); }
     // Modelli di preventivo (lavori tipo).
     match /modelli/{id}    { allow read, write: if isAllowed(); }
+    // Note dei giorni nell'agenda dei cantieri.
+    match /noteAgenda/{id} { allow read, write: if isAllowed(); }
 
     // Tutto il resto è chiuso.
   }

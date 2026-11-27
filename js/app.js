@@ -4,7 +4,7 @@ import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
 import { LISTINO_RIMINI, pianoListino } from './listino-rimini.js';
-import { fineLavori, spostaLavorativi, durataDaTesto, scadenzeDaCantiere, icsCantiere, lavorativo } from './agenda.js';
+import { fineLavori, spostaLavorativi, durataDaTesto, scadenzeDaCantiere, icsCantiere, lavorativo, lunediDi, agendaSettimana, daProgrammare, cantieri, giornoLavoro } from './agenda.js';
 import { areeStanza, espressione, perimetro, totaliStanze, LAVORAZIONI, vociPerLavorazione, sezioniDaRilievo } from './misure.js';
 import { VERSIONE } from './versione.js';
 import { firebaseConfig } from '../firebase-config.js';
@@ -29,7 +29,7 @@ export const AZIENDA_BASE = {
 /* ---------- Stato ---------- */
 const S = {
   view: 'lista', user: null, persone: [], started: false,
-  loaded: { preventivi: false, listino: false, clienti: false, misure: false, modelli: false }, misure: [], modelli: [], rilievo: null, mq: '',
+  loaded: { preventivi: false, listino: false, clienti: false, misure: false, modelli: false, noteAgenda: false }, misure: [], modelli: [], noteAgenda: [], settimana: null, indietro: 'lista', rilievo: null, mq: '',
   preventivi: [], listino: [], clienti: [], azienda: { ...AZIENDA_BASE },
   current: null, base: null, seen: false, gone: false, filter: 'tutti', q: '', lq: '', cq: '', sync: { online: true, pending: false }
 };
@@ -56,6 +56,7 @@ const IC = {
   metro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>',
   firma: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17c3-4 5-9 7-9 2.5 0-1 9 1.5 9 1.8 0 2.5-3 4-3 1.2 0 1 2 2.5 2H21"/><path d="M3 21h18"/></svg>',
   calendario: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>',
+  persone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></svg>',
   camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
   tel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
@@ -181,7 +182,7 @@ async function boot() {
     // Senza configurazione Firebase: dati «solo su questo telefono», senza accesso.
     const kind = TEST ? 'test' : app ? 'online' : 'locale';
     auth = await createAuth(kind === 'test' ? 'fake' : kind === 'online' ? 'firebase' : 'locale', { app, user: seed.user, emulator: EMU });
-    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, lento: seed.lento, errore: seed.errore, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto, misure: seed.misure, modelli: seed.modelli } });
+    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, lento: seed.lento, errore: seed.errore, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto, misure: seed.misure, modelli: seed.modelli, noteAgenda: seed.noteAgenda } });
     store.onSync(s => { S.sync = s; renderSync(); });
     auth.onUser(onUser);
   } catch (e) {
@@ -249,7 +250,7 @@ function trasferimentoBanner() {
 
 function startCollections() {
   controllaLocale();
-  for (const name of ['preventivi', 'listino', 'clienti', 'misure', 'modelli']) {
+  for (const name of ['preventivi', 'listino', 'clienti', 'misure', 'modelli', 'noteAgenda']) {
     unsubs.push(store.subscribe(name, list => {
       S[name] = list; S.loaded[name] = true;
       render(true);
@@ -291,6 +292,9 @@ const main = $('#main');
 function go(view) {
   if (S.view === 'editor' && view !== 'editor') { flushEditor(); S.current = null; closeLayer('editor'); seguiFoto(null); }
   if (S.rilievo) { flushRilievo(); S.rilievo = null; closeLayer('rilievo'); }
+  if (S.view === 'agenda' && view !== 'agenda') closeLayer('agenda');
+  const daEditor = S.view === 'editor';
+  if (view !== 'editor' && !(daEditor && view === 'agenda')) S.indietro = 'lista';
   S.view = view;
   render();
   window.scrollTo(0, 0);
@@ -305,6 +309,7 @@ function render(fromData) {
   if (S.view === 'lista') return renderLista(fromData);
   if (S.view === 'listino') return fromData && $('#lq') ? renderListinoRows() : renderListino();
   if (S.view === 'clienti') return fromData && $('#cq') ? renderClientiRows() : renderClienti();
+  if (S.view === 'agenda') return modal.hidden || !fromData ? renderAgenda() : null;
   if (S.view === 'misure') return S.rilievo ? (fromData ? null : renderRilievo()) : (fromData && $('#mq') ? renderMisureRows() : renderMisure());
   if (S.view === 'impostazioni') return fromData ? null : renderImpostazioni();
   if (S.view === 'editor') return fromData ? refreshEditorData() : renderEditor();
@@ -336,6 +341,7 @@ function renderLista(fromData) {
     ${installBanner()}
     ${trasferimentoBanner()}
     ${richiamo.size ? `<button class="note richiama" id="richiama" type="button" data-filter="${S.filter === 'richiamare' ? 'tutti' : 'richiamare'}">${IC.tel}<span><b>${richiamo.size} ${richiamo.size === 1 ? 'preventivo' : 'preventivi'} da richiamare</b> · inviati da più di ${Number(S.azienda.giorniRichiamo) || 10} giorni senza risposta</span><span class="vedi">${S.filter === 'richiamare' ? 'Mostra tutti' : 'Vedi'}</span></button>` : ''}
+    ${agendaBanner()}
     <div class="head">
       <div><span class="eyebrow">${S.user && S.user.locale ? 'Dati solo su questo telefono' : 'Impresa Edile Nazifoski'}</span><h1>Preventivi</h1></div>
       <div class="head-actions"><button class="btn" data-act="modelli" type="button">${IC.list} Modelli</button><button class="btn primary" data-act="new" type="button">${IC.plus} Nuovo preventivo</button></div>
@@ -406,7 +412,7 @@ function nuovoPreventivo(cliente) {
   };
 }
 function openEditor(p) {
-  if (S.view === 'editor') flushEditor(); else openLayer('editor', () => { flushEditor(); S.current = null; seguiFoto(null); S.view = 'lista'; render(); });
+  if (S.view === 'editor') flushEditor(); else { S.indietro = S.view === 'agenda' ? 'agenda' : 'lista'; openLayer('editor', () => { flushEditor(); S.current = null; seguiFoto(null); S.view = S.indietro; render(); }); }
   S.current = clone(p); S.base = p.modificato || null; S.seen = false; S.gone = false;
   S.view = 'editor'; render(); window.scrollTo(0, 0);
 }
@@ -812,6 +818,8 @@ async function onAct(b) {
   if (S.view === 'editor' && p && p.firma && ATTI_CONTENUTO.includes(act)) { revisionePerModificare(); return; }
   if (act === 'new') { if (S.modelli.length) return scegliModello(); const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
   if (act === 'modelli') return scegliModello();
+  if (act === 'agenda') { S.settimana = lunediDi(today()); S.view = 'agenda'; openLayer('agenda', () => { S.view = 'lista'; render(); }); render(); window.scrollTo(0, 0); return; }
+  if (S.view === 'agenda' && (await onActAgenda(act, b))) return;
   if (act === 'lNew') return editListino(null);
   if (act === 'fiDisegna') {
     const { apriFirma, chiudiFirma } = await import('./firma.js');
@@ -850,7 +858,7 @@ async function onAct(b) {
   const sez = p.sezioni;
   const rerender = focusSel => { const y = window.scrollY; renderEditor(); window.scrollTo(0, y); markDirty(); if (focusSel) { const f = $(focusSel); if (f) f.focus({ preventScroll: false }); } };
   switch (act) {
-    case 'back': go('lista'); break;
+    case 'back': go(S.indietro || 'lista'); break;
     case 'restore': S.gone = false; $('#dupwrap').innerHTML = ''; saveCurrent(); toast('Preventivo ripristinato'); break;
     case 'takeRemote': {
       const remote = S.preventivi.find(x => x.id === p.id);
@@ -978,7 +986,7 @@ document.addEventListener('click', e => {
   const filt = e.target.closest('#main [data-filter]');
   if (filt && S.view === 'lista') { S.filter = S.filter === filt.dataset.filter && filt.classList.contains('sum') ? 'tutti' : filt.dataset.filter; renderLista(); return; }
   const open = e.target.closest('#main [data-open]');
-  if (open) { const p = S.preventivi.find(x => x.id === open.dataset.open); if (p) openEditor(p); return; }
+  if (open) { const p = S.preventivi.find(x => x.id === open.dataset.open); if (p) { openEditor(p); if (open.dataset.agendaData) { const ag = $('#agenda'); if (ag) { ag.hidden = false; ag.scrollIntoView({ block: 'start' }); const i = $('[data-ag="inizio"]', ag); if (i) i.focus({ preventScroll: true }); } } } return; }
   const rl = e.target.closest('#main [data-rl]'); if (rl) { const x = S.misure.find(i => i.id === rl.dataset.rl); if (x) apriRilievo(x); return; }
   const li = e.target.closest('#main [data-li]'); if (li) { const x = S.listino.find(i => i.id === li.dataset.li); if (x) editListino(x); return; }
   const cl = e.target.closest('#main [data-cl]'); if (cl) { const x = S.clienti.find(i => i.id === cl.dataset.cl); if (x) editCliente(x); return; }
@@ -1400,6 +1408,102 @@ function scegliModello() {
       write('modelli', m.id, DEL); toast('Modello eliminato');
     }
   });
+}
+
+/* ---------- Pagina Agenda ---------- */
+const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+const piuGiorni = (isoD, n) => { const d = new Date(isoD + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const ggmm = isoD => `${giornoSett(isoD)} ${isoD.slice(8, 10)}/${isoD.slice(5, 7)}`;
+function agendaBanner() {
+  const oggi = today();
+  const cs = cantieri(S.preventivi);
+  const corso = cs.filter(c => c.inizio <= oggi && c.fine >= oggi).length;
+  const presto = cs.filter(c => c.inizio > oggi && c.inizio <= piuGiorni(oggi, 7)).sort((a, b) => a.inizio.localeCompare(b.inizio));
+  const prog = daProgrammare(S.preventivi).length;
+  const indietro = S.noteAgenda.filter(n => !n.fatto && n.data && n.data <= oggi).length;
+  const parti = [];
+  if (corso) parti.push(`<b>${corso} ${corso === 1 ? 'cantiere in corso' : 'cantieri in corso'}</b>`);
+  if (presto.length) parti.push(`${presto.length === 1 ? '1 inizia' : presto.length + ' iniziano'} ${presto[0].inizio === oggi ? 'oggi' : giornoSett(presto[0].inizio)}`);
+  if (prog) parti.push(`${prog} da programmare`);
+  if (indietro) parti.push(`${indietro} ${indietro === 1 ? 'nota da fare' : 'note da fare'}`);
+  if (!parti.length) return '';
+  return `<button class="note ag-banner" id="agenda-banner" type="button" data-act="agenda">${IC.calendario}<span><b>Agenda</b> · ${parti.join(' · ')}</span><span class="vedi">Apri</span></button>`;
+}
+function cantiereHtml(c, oggi) {
+  const p = c.p; const a = p.agenda || {};
+  const g = giornoLavoro(oggi, a.inizio, c.giorni);
+  return `<button class="ag-item" type="button" data-open="${esc(p.id)}">
+    <b>${esc(p.cliente?.nome || 'Cliente')} – ${esc(p.oggetto || 'lavori')}</b>
+    ${p.cantiere || p.cliente?.indirizzo ? `<span>${esc(p.cantiere || p.cliente.indirizzo)}</span>` : ''}
+    <span>dal ${ggmm(c.inizio)} al ${ggmm(c.fine)}${g ? ` · <b>giorno ${g} di ${c.giorni}</b>` : ` · ${c.giorni} giorni`}</span>
+    ${a.chi ? `<span>${IC.persone || ''}Chi ci lavora: ${esc(a.chi)}</span>` : ''}
+    ${a.note ? `<span class="ag-nota-c">${esc(a.note)}</span>` : ''}
+  </button>`;
+}
+function notaHtml(n) {
+  return `<div class="nota${n.fatto ? ' fatta' : ''}" data-nota="${esc(n.id)}">
+    <button class="nota-chk" type="button" data-act="notaFatto" aria-pressed="${n.fatto ? 'true' : 'false'}" aria-label="${n.fatto ? 'Segna da fare' : 'Segna fatta'}">${n.fatto ? IC.check : ''}</button>
+    <button class="nota-t" type="button" data-act="notaEdit"><b>${ggmm(n.data)}</b> ${esc(n.testo)}</button>
+  </div>`;
+}
+function renderAgenda() {
+  const oggi = today();
+  const lun = S.settimana || lunediDi(oggi); const dom = piuGiorni(lun, 6);
+  const w = agendaSettimana(S.preventivi, S.noteAgenda, lun, oggi);
+  const pros = agendaSettimana(S.preventivi, [], piuGiorni(lun, 7), oggi);
+  const indietro = S.noteAgenda.filter(n => !n.fatto && n.data && n.data < oggi).sort((a, b) => a.data.localeCompare(b.data));
+  const prog = daProgrammare(S.preventivi);
+  const mese = (x, conMese) => `${+x.slice(8, 10)}${conMese ? ' ' + MESI[+x.slice(5, 7) - 1] : ''}`;
+  const titolo = `Settimana dal ${mese(lun, lun.slice(5, 7) !== dom.slice(5, 7))} al ${mese(dom, true)}`;
+  const vuoto = t => `<p class="help" style="margin:0;color:var(--stone)">${t}</p>`;
+  main.innerHTML = `
+    <div class="ed-top">
+      <button class="btn ghost" type="button" data-act="back" aria-label="Torna ai preventivi">${IC.back}<span class="back-label">Preventivi</span></button>
+      <div class="ttl"><span class="eyebrow">Agenda dei cantieri</span><h1>${titolo}</h1></div>
+    </div>
+    <div class="ag-nav"><button class="btn" type="button" data-act="agPrec" aria-label="Settimana prima">‹ Prima</button><button class="btn" type="button" data-act="agOggi">Oggi</button><button class="btn" type="button" data-act="agSucc" aria-label="Settimana dopo">Dopo ›</button></div>
+    ${indietro.length ? `<section class="card ag-card ag-ind" id="ag-indietro"><h2>Da fare, rimaste indietro</h2>${indietro.map(notaHtml).join('')}</section>` : ''}
+    <section class="card ag-card"><h2>Cantieri in corso</h2>${w.corso.length ? w.corso.map(c => cantiereHtml(c, oggi)).join('') : vuoto('Nessun cantiere in questa settimana.')}</section>
+    ${w.inizi.length || w.fini.length ? `<section class="card ag-card"><h2>Inizi e fine lavori</h2>
+      ${w.inizi.map(c => `<button class="ag-riga" type="button" data-open="${esc(c.p.id)}"><span class="ag-tag ini">Inizia</span><b>${ggmm(c.inizio)}</b> ${esc(c.p.cliente?.nome || '')} – ${esc(c.p.oggetto || '')}</button>`).join('')}
+      ${w.fini.map(c => `<button class="ag-riga" type="button" data-open="${esc(c.p.id)}"><span class="ag-tag fin">Finisce</span><b>${ggmm(c.fine)}</b> ${esc(c.p.cliente?.nome || '')} – ${esc(c.p.oggetto || '')}${c.rata ? ` · <span class="ag-rata">${esc(c.rata.desc || 'Rata')} ${fmtEur(Number(c.rata.importo) || 0)} da incassare</span>` : ''}</button>`).join('')}
+    </section>` : ''}
+    <section class="card ag-card" id="ag-note"><h2>Note della settimana</h2>
+      ${(() => { const l = w.note.filter(n => !indietro.includes(n)); return l.length ? l.map(notaHtml).join('') : vuoto('Consegne, sopralluoghi, appuntamenti: aggiungili qui.'); })()}
+      <button class="btn" type="button" data-act="agNota" style="margin-top:10px">${IC.plus} Aggiungi nota</button>
+    </section>
+    ${pros.corso.length ? `<section class="card ag-card"><h2>Settimana dopo</h2>${pros.corso.map(c => `<button class="ag-riga" type="button" data-open="${esc(c.p.id)}"><b>${c.inizio > piuGiorni(lun, 6) ? 'inizia ' + ggmm(c.inizio) : 'continua'}</b> ${esc(c.p.cliente?.nome || '')} – ${esc(c.p.oggetto || '')}${c.fine <= piuGiorni(lun, 13) ? ' · finisce ' + ggmm(c.fine) : ''}</button>`).join('')}</section>` : ''}
+    ${prog.length ? `<section class="card ag-card" id="ag-programma"><h2>Da programmare <small>lavori accettati senza data</small></h2>${prog.map(p => `<button class="ag-riga" type="button" data-open="${esc(p.id)}" data-agenda-data="1"><b>${esc(p.cliente?.nome || 'Cliente')}</b> – ${esc(p.oggetto || 'lavori')}<span class="vedi">Metti la data</span></button>`).join('')}</section>` : ''}`;
+  enter();
+}
+function notaSheet(n) {
+  const nuova = !n; n = n || { data: today(), testo: '' };
+  openModal(`<form class="sheet" id="an" role="dialog" aria-modal="true" aria-labelledby="an-t" style="width:min(460px,100%)">
+    <div class="sheet-h"><h2 id="an-t">${nuova ? 'Nuova nota' : 'Nota'}</h2><button class="icon-btn" type="button" data-close="no" aria-label="Chiudi">${IC.x}</button></div>
+    <div class="sheet-b">
+      <label class="field"><span>Giorno</span><input class="in" type="date" id="an-data" required value="${esc(n.data)}"></label>
+      <label class="field"><span>Cosa</span><textarea class="in" id="an-testo" required placeholder="Es. consegna piastrelle da Ceramiche X; sopralluogo Neri ore 17">${esc(n.testo)}</textarea></label>
+    </div>
+    <div class="sheet-f">${nuova ? '' : '<button class="btn danger left" type="button" id="an-del">Elimina</button>'}<button class="btn" type="button" data-close="no">Annulla</button><button class="btn primary" type="submit">Salva</button></div>
+  </form>`);
+  $('#an').addEventListener('submit', e => {
+    e.preventDefault();
+    const data = $('#an-data').value, testo = $('#an-testo').value.trim();
+    if (!data || !testo) { toast('Scrivi il giorno e cosa fare'); return; }
+    write('noteAgenda', nuova ? uid() : n.id, { ...(nuova ? { creata: new Date().toISOString(), fatto: false } : n), data, testo, id: undefined });
+    closeModal(true); if (S.view === 'agenda') renderAgenda(); toast('Nota salvata');
+  });
+  const del = $('#an-del');
+  if (del) del.onclick = () => { write('noteAgenda', n.id, DEL); closeModal(true); if (S.view === 'agenda') renderAgenda(); toast('Nota eliminata'); };
+}
+async function onActAgenda(act, b) {
+  if (act === 'agPrec' || act === 'agSucc') { S.settimana = piuGiorni(S.settimana || lunediDi(today()), act === 'agPrec' ? -7 : 7); renderAgenda(); return true; }
+  if (act === 'agOggi') { S.settimana = lunediDi(today()); renderAgenda(); return true; }
+  if (act === 'agNota') { notaSheet(null); return true; }
+  const nEl = b.closest('[data-nota]'); const n = nEl && S.noteAgenda.find(x => x.id === nEl.dataset.nota);
+  if (act === 'notaEdit' && n) { notaSheet(n); return true; }
+  if (act === 'notaFatto' && n) { const { id, ...r } = n; write('noteAgenda', id, { ...r, fatto: !n.fatto }); return true; }
+  return false;
 }
 
 /* ---------- Cantiere in agenda ---------- */
@@ -1964,7 +2068,7 @@ async function esportaBackup() {
   const { ...az } = S.azienda;
   let foto = [];
   try { foto = await store.all('foto'); } catch (e) { toast('Foto non incluse: non riesco a leggerle adesso'); }
-  const dati = { formato: 'nazifoski-dati', esportato: new Date().toISOString(), preventivi: S.preventivi.map(strip), listino: S.listino.map(strip), clienti: S.clienti.map(strip), misure: S.misure.map(strip), modelli: S.modelli.map(strip), foto, azienda: az };
+  const dati = { formato: 'nazifoski-dati', esportato: new Date().toISOString(), preventivi: S.preventivi.map(strip), listino: S.listino.map(strip), clienti: S.clienti.map(strip), misure: S.misure.map(strip), modelli: S.modelli.map(strip), noteAgenda: S.noteAgenda.map(strip), foto, azienda: az };
   const nome = `nazifoski-dati-${today()}.json`;
   const blob = new Blob([JSON.stringify(dati, null, 1)], { type: 'application/json' });
   const file = new File([blob], nome, { type: 'application/json' });
