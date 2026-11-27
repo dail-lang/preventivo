@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf, rateDaTesto, ricalcolaRate, statoPagamenti, RATE_BASE, segnaRichiamato, modelloDa, daModello } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf, rateDaTesto, ricalcolaRate, statoPagamenti, RATE_BASE, segnaRichiamato, modelloDa, daModello, nuovaVariante, totaleVariante, totaleExtra, documentoVariante } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -543,6 +543,12 @@ function renderEditor() {
       <label class="btn foto-add" for="foto-file">${IC.camera} Scatta o scegli foto</label>
       <input type="file" id="foto-file" accept="image/*" multiple hidden>
     </section>`}
+    ${p.esempio ? '' : `<section class="card" id="extra"${mostraExtra(p) ? '' : ' hidden'}>
+      <h2>Lavori extra <small>varianti chieste durante il cantiere: PDF e firma a parte</small></h2>
+      <div id="extra-list">${(p.extra || []).map(varianteHtml).join('')}</div>
+      <button class="btn" type="button" data-act="xAdd">${IC.plus} Nuova variante</button>
+      <div class="pg-sum" id="extra-tot" style="margin-top:12px">${extraTotHtml(p)}</div>
+    </section>`}
     ${p.esempio ? '' : `<section class="card" id="pagamenti">
       <h2>Pagamenti <small>acconti e saldo, solo per voi: il PDF non cambia</small></h2>
       <div id="pg-body">${pagamentiHtml(p)}</div>
@@ -557,7 +563,7 @@ function renderEditor() {
     <button class="btn primary" type="button" data-act="preview">${IC.doc} PDF</button>
   </div></div>`;
   refreshDatalist();
-  $$('#main textarea[data-v]').forEach(autoGrow);
+  $$('#main textarea[data-v], #main textarea[data-xv]').forEach(autoGrow);
   updateTotals();
   enter();
 }
@@ -630,6 +636,7 @@ function updateTotals() {
   set('t-ival', `IVA ${c.aliq}%`);
   set('t-iva', fmtEur(c.iva));
   set('t-tot', fmtEur(c.totale));
+  aggiornaExtra();
   aggiornaPagamenti();
   const m = calcMargine(p);
   const mw = $('#t-marg-w');
@@ -732,6 +739,7 @@ main.addEventListener('input', e => {
     setPath(p, t.dataset.f, v);
     if (t.dataset.f === 'cliente.nome') fillCliente(t.value);
     if (t.dataset.f === 'stato' && v === 'inviato') { p.dataInvio = today(); delete p.richiamato; }
+    if (t.dataset.f === 'stato') { const ex = $('#extra'); if (ex) ex.hidden = !mostraExtra(p); }
     if (t.dataset.f === 'numero' && v !== '') { $('.ed-top h1').textContent = numStr(p); $('#dupwrap').innerHTML = dupNote(p); }
   } else if (t.dataset.v) {
     const si = +t.closest('[data-sez]').dataset.sez, vi = +t.closest('[data-voce]').dataset.voce;
@@ -741,6 +749,10 @@ main.addEventListener('input', e => {
     if (t.dataset.v === 'um') { const q = $('[data-v="qta"]', t.closest('.voce')); if (q) q.placeholder = t.value === 'a corpo' ? '1' : 'es. 3,5*4'; }
   } else if (t.dataset.s) {
     p.sezioni[+t.closest('[data-sez]').dataset.sez][t.dataset.s] = t.value;
+  } else if (t.dataset.xv || t.dataset.xt) {
+    const x = (p.extra || [])[+t.closest('[data-x]').dataset.x]; if (!x || x.firma) return;
+    if (t.dataset.xt) x.titolo = t.value;
+    else { const v = x.voci[+t.closest('[data-xj]').dataset.xj]; if (!v) return; v[t.dataset.xv] = t.value; if (t.tagName === 'TEXTAREA') autoGrow(t); }
   } else if (t.dataset.r) {
     const r = p.rate && p.rate[+t.closest('[data-rata]').dataset.rata]; if (!r) return;
     const k = t.dataset.r;
@@ -816,6 +828,16 @@ async function onAct(b) {
     }
     case 'revisioni': flushEditor(); apriRevisioni(); break;
     case 'modello': flushEditor(); salvaModello(p); break;
+    case 'xAdd': (p.extra = p.extra || []).push(nuovaVariante(p, today(), uid)); ridisegnaExtra(); markDirty(); { const t = $$('#extra [data-xt]'); if (t.length) t[t.length - 1].focus(); } break;
+    case 'xDel': case 'xvAdd': case 'xvDel': case 'xPdf': {
+      const xi = +b.closest('[data-x]').dataset.x; const x = (p.extra || [])[xi]; if (!x) break;
+      if (act === 'xPdf') { flushEditor(); openPreview(null, { variante: xi }); break; }
+      if (x.firma) break;
+      if (act === 'xDel') { if (!(await confirmBox(`Eliminare la variante ${x.n}?`, 'Le sue voci vengono tolte. Non si può annullare.', 'Elimina'))) break; p.extra.splice(xi, 1); }
+      if (act === 'xvAdd') x.voci.push({ id: uid(), desc: '', um: 'a corpo', qta: '', prezzo: '' });
+      if (act === 'xvDel') { x.voci.splice(+b.closest('[data-xj]').dataset.xj, 1); if (!x.voci.length) x.voci.push({ id: uid(), desc: '', um: 'a corpo', qta: '', prezzo: '' }); }
+      ridisegnaExtra(); updateTotals(); markDirty(); break;
+    }
     case 'rStandard': {
       const testo = S.azienda.rateStandard || RATE_BASE;
       const nuove = rateDaTesto(testo, calc(p).totale);
@@ -849,7 +871,7 @@ async function onAct(b) {
       flushEditor();
       const anno = new Date().getFullYear();
       const np = { ...clone(p), id: uid(), anno, numero: nextNumero(S.preventivi, anno), data: today(), stato: 'bozza', esempio: false, creato: new Date().toISOString() };
-      for (const k of ['rev', 'revisioni', 'firma', 'dataInvio', 'richiamato', 'rate']) delete np[k];
+      for (const k of ['rev', 'revisioni', 'firma', 'dataInvio', 'richiamato', 'rate', 'extra', 'spese']) delete np[k];
       np.sezioni.forEach(s => { s.id = uid(); s.voci.forEach(v => { v.id = uid(); }); });
       openEditor(np); saveCurrent(); toast('Copia creata: preventivo ' + numStr(np)); break;
     }
@@ -1310,6 +1332,36 @@ function scegliModello() {
   });
 }
 
+/* ---------- Lavori extra (varianti) ---------- */
+const mostraExtra = p => !p.esempio && (p.stato === 'accettato' || !!p.firma || (p.extra || []).length > 0);
+function varianteHtml(x, i) {
+  const dis = x.firma ? ' disabled' : '';
+  return `<div class="x-var${x.firma ? ' firmata' : ''}" data-x="${i}">
+    <div class="x-h"><b>Variante ${x.n}</b><span>${esc(fmtDate(x.data))}</span>${x.firma ? '' : `<button class="icon-btn del" type="button" data-act="xDel" aria-label="Elimina variante ${x.n}">${IC.trash}</button>`}</div>
+    <label class="field"><span>Titolo</span><input class="in" data-xt="1" value="${esc(x.titolo || '')}" placeholder="Es. Spostamento termosifone"${dis}></label>
+    ${(x.voci || []).map((v, j) => `<div class="x-voce" data-xj="${j}">
+      <label class="field xd"><span>Descrizione</span><textarea class="in" rows="1" data-xv="desc" placeholder="Lavoro in più"${dis}>${esc(v.desc)}</textarea></label>
+      <label class="field xu"><span>U.M.</span><select class="in" data-xv="um"${dis}>${opt(UM.map(u => [u, u]), v.um)}</select></label>
+      <label class="field xq"><span>Quantità</span><input class="in r" data-xv="qta" inputmode="decimal" value="${esc(v.qta)}" placeholder="${v.um === 'a corpo' ? '1' : ''}"${dis}></label>
+      <label class="field xp"><span>Prezzo €</span><input class="in r" data-xv="prezzo" inputmode="decimal" value="${esc(v.prezzo)}" placeholder="0,00"${dis}></label>
+      ${x.firma ? '' : `<button class="icon-btn del xx" type="button" data-act="xvDel" aria-label="Togli voce">${IC.x}</button>`}
+    </div>`).join('')}
+    ${x.firma ? `<div class="note firma-ed" style="margin:10px 0 0">${IC.check}<span>Firmata da <b>${esc(x.firma.nome || 'il cliente')}</b> il ${esc(fmtDate(x.firma.data))}</span></div>` : `<button class="btn" type="button" data-act="xvAdd">${IC.plus} Aggiungi voce</button>`}
+    <div class="x-f"><span class="x-tot">${xTotHtml(x)}</span><button class="btn" type="button" data-act="xPdf">${IC.doc} PDF e firma</button></div>
+  </div>`;
+}
+function xTotHtml(x) { return `Totale variante <b>${fmtEur(totaleVariante(S.current, x))}</b> IVA compresa`; }
+function extraTotHtml(p) {
+  const n = (p.extra || []).length;
+  return n ? `<span>Preventivo <b>${fmtEur(calc(p).totale)}</b></span><span>Lavori extra <b>${fmtEur(totaleExtra(p))}</b></span><span>Totale con i lavori extra <b>${fmtEur(round2(calc(p).totale + totaleExtra(p)))}</b></span>` : '<span>Nessuna variante: aggiungila quando il cliente chiede lavori in più.</span>';
+}
+function ridisegnaExtra() { const l = $('#extra-list'); if (l && S.current) { l.innerHTML = (S.current.extra || []).map(varianteHtml).join(''); $$('#extra-list textarea').forEach(autoGrow); } aggiornaExtra(); }
+function aggiornaExtra() {
+  const p = S.current; if (!p) return;
+  $$('#extra [data-x]').forEach(el => { const x = (p.extra || [])[+el.dataset.x]; const t = $('.x-tot', el); if (x && t) t.innerHTML = xTotHtml(x); });
+  const tot = $('#extra-tot'); if (tot) tot.innerHTML = extraTotHtml(p);
+}
+
 /* ---------- Pagamenti ---------- */
 const eur2 = n => (isFinite(n) ? fmtNum(n, 2) : '');
 function pagamentiHtml(p) {
@@ -1379,7 +1431,9 @@ function apriRevisioni() {
 }
 
 /* ---------- Anteprima PDF ---------- */
-async function openPreview(versione) {
+async function openPreview(versione, { variante } = {}) {
+  const vi = Number.isInteger(variante) ? variante : null;
+  if (vi !== null) versione = documentoVariante(S.current, vi);
   const p = versione || clone(S.current);
   try {
     const m = await import('./pdf.js');
@@ -1394,12 +1448,18 @@ async function openPreview(versione) {
       onClose: () => closeLayer('preview'),
       onSent: () => { segnaInviato(); toast('Preventivo segnato come inviato'); },
       onShared: () => { segnaInviato(); },
-      onFirma: versione ? null : async () => {
+      onFirma: versione && vi === null ? null : async () => {
         const { apriFirma, chiudiFirma } = await import('./firma.js');
         openLayer('firma', () => chiudiFirma());
-        const f = await apriFirma({ nome: (p.cliente && p.cliente.nome) || '' });
+        const f = await apriFirma(vi === null ? { nome: (p.cliente && p.cliente.nome) || '' } : { nome: (p.cliente && p.cliente.nome) || '', titolo: 'Firma della variante', nota: 'Il cliente accetta i lavori extra di questa variante. Il preventivo principale non cambia.' });
         closeLayer('firma');
         if (!f || !S.current || S.current.id !== p.id) return null;
+        if (vi !== null) {
+          const x = (S.current.extra || [])[vi]; if (!x) return null;
+          x.firma = f; saveCurrent(); ridisegnaExtra();
+          toast(`Variante ${x.n} firmata`);
+          return documentoVariante(S.current, vi);
+        }
         S.current.firma = f; S.current.stato = 'accettato';
         saveCurrent();
         const sel = $('#f-stato'); if (sel) sel.value = 'accettato';
@@ -1407,7 +1467,7 @@ async function openPreview(versione) {
         toast('Firmato: il preventivo è «Accettato»');
         return clone(S.current);
       },
-      messaggio: messaggioInvio(S.azienda.messaggio || MESSAGGIO_BASE, p, S.azienda),
+      messaggio: vi !== null ? `Buongiorno${p.cliente && p.cliente.nome ? ' ' + p.cliente.nome : ''}, le invio la ${p.titoloDoc.charAt(0).toLowerCase() + p.titoloDoc.slice(1)} per i lavori extra. ${S.azienda.ragione || ''} – ${S.azienda.telefono || ''}`.trim() : messaggioInvio(S.azienda.messaggio || MESSAGGIO_BASE, p, S.azienda),
       telefono: (p.cliente && p.cliente.telefono) || '',
       toast
     });

@@ -22,7 +22,7 @@ export async function caricaPdfJs() {
 
 export function fileName(p) {
   const cli = (p.cliente?.nome || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return `Preventivo ${p.esempio ? 'esempio' : p.anno + '-' + String(p.numero).padStart(3, '0') + (Number(p.rev) > 1 ? ' rev' + p.rev : '')}${cli ? ' ' + cli : ''}.pdf`;
+  return `Preventivo ${p.esempio ? 'esempio' : p.anno + '-' + String(p.numero).padStart(3, '0') + (Number(p.rev) > 1 ? ' rev' + p.rev : '') + (p.varianteN ? ' variante ' + p.varianteN : '')}${cli ? ' ' + cli : ''}.pdf`;
 }
 
 /** Restituisce il PDF come Uint8Array. */
@@ -189,7 +189,7 @@ export function buildDoc(p, a, logoB64) {
   content.push({
     columns: [
       { width: '*', stack: [
-        { text: p.esempio ? 'Preventivo di esempio' : `Preventivo n. ${numero}`, fontSize: 8.5, color: C.soft },
+        { text: p.titoloDoc || (p.esempio ? 'Preventivo di esempio' : `Preventivo n. ${numero}`), fontSize: 8.5, color: C.soft },
         { text: p.oggetto || 'Preventivo', bold: true, fontSize: 12, lineHeight: 1.2, margin: [0, 3, 0, 6] },
         { text: [{ text: 'Data: ', color: C.soft }, fmtDate(p.data)], fontSize: 9 }
       ] },
@@ -321,14 +321,14 @@ export function buildDoc(p, a, logoB64) {
   return {
     pageSize: 'A4',
     pageMargins: [40, 58, 40, 54],
-    info: { title: `Preventivo ${numero}${cl.nome ? ' - ' + cl.nome : ''}`, author: a.ragione || '', subject: p.oggetto || '' },
+    info: { title: `${p.titoloDoc || 'Preventivo ' + numero}${cl.nome ? ' - ' + cl.nome : ''}`, author: a.ragione || '', subject: p.oggetto || '' },
     images: { logo: 'data:image/png;base64,' + logoB64 },
     defaultStyle: { font: 'Inter', fontSize: 9, color: C.ink, lineHeight: 1.2 },
     header: cur => (cur === 1 ? { text: '' } : {
       margin: [40, 22, 40, 0],
       columns: [
         { image: 'logo', width: 92 },
-        { width: '*', alignment: 'right', margin: [0, 7, 0, 0], fontSize: 7.6, color: C.soft, text: [{ text: 'Preventivo ' + numero, bold: true, color: C.ink }, `  ·  ${fmtDate(p.data)}${cl.nome ? '  ·  ' + cl.nome : ''}`] }
+        { width: '*', alignment: 'right', margin: [0, 7, 0, 0], fontSize: 7.6, color: C.soft, text: [{ text: p.varianteN ? `Variante ${p.varianteN} · Preventivo ${numero}` : 'Preventivo ' + numero, bold: true, color: C.ink }, `  ·  ${fmtDate(p.data)}${cl.nome ? '  ·  ' + cl.nome : ''}`] }
       ]
     }),
     footer: (cur, total) => ({

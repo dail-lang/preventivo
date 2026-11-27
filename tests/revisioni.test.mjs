@@ -98,3 +98,30 @@ test('PDF: firma e timbro dell\'impresa nello spazio «Per l\'impresa», solo qu
   const senza = JSON.stringify(buildDoc(p, { ragione: 'X', firma: false, firmaImpresa: img }, null));
   assert.ok(!senza.includes(img), 'niente firme, niente timbro');
 });
+
+import { nuovaVariante, totaleExtra, documentoVariante, statoPagamenti } from '../js/calc.js';
+test('varianti: numerate, totale con IVA del preventivo, nei pagamenti', () => {
+  const p = { ...base(), extra: [] };
+  let n = 0; const id = () => 'id' + (++n);
+  const v1 = nuovaVariante(p, '2026-11-27', id);
+  assert.equal(v1.n, 1); assert.equal(v1.data, '2026-11-27'); assert.equal(v1.voci.length, 1);
+  v1.voci[0] = { id: 'a', desc: 'Spostamento termosifone', um: 'a corpo', qta: '', prezzo: '300' };
+  p.extra.push(v1);
+  const v2 = nuovaVariante(p, '2026-11-28', id); assert.equal(v2.n, 2);
+  v2.voci[0] = { id: 'b', desc: 'Presa in più', um: 'cad', qta: '2', prezzo: '50' };
+  p.extra.push(v2);
+  assert.equal(totaleExtra(p), 440, '(300 + 100) + IVA 10%');
+  assert.equal(totaleExtra({ ...base() }), 0);
+  const st = statoPagamenti({ ...p, rate: [] }, '2026-11-27');
+  assert.equal(st.daIncassare, 4700.3 + 440);
+});
+test('varianti: PDF «Variante n. 1 al preventivo», con la firma della variante', () => {
+  const p = { ...base(), extra: [{ id: 'x', n: 1, data: '2026-11-27', titolo: 'Spostamento termosifone', voci: [{ id: 'a', desc: 'Spostamento termosifone bagno', um: 'a corpo', qta: '', prezzo: '300' }], firma: { png: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', nome: 'Mario', data: '2026-11-27' } }] };
+  const d = documentoVariante(p, 0);
+  const s = JSON.stringify(buildDoc(d, { ragione: 'X' }, null));
+  assert.ok(s.includes('Variante n. 1 al preventivo n. 2026/007'), 'titolo');
+  assert.ok(s.includes('Spostamento termosifone bagno'));
+  assert.ok(s.includes('Firmato da Mario'), 'la firma è quella della variante');
+  assert.ok(!s.includes('Ristrutturazione bagno comprensiva'), 'non ripete le voci del preventivo');
+  assert.match(fileName(d), /2026-007 variante 1/);
+});

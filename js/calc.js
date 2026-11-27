@@ -251,7 +251,7 @@ export function rateDaTesto(testo, totale) {
 /** Incassato, da incassare (sul totale IVA compresa), rate scadute non pagate e prossima rata da incassare. */
 export function statoPagamenti(p, oggiIso) {
   const rate = p.rate || [];
-  const totale = calc(p).totale;
+  const totale = round2(calc(p).totale + totaleExtra(p));
   const incassato = round2(rate.filter(r => r.pagata).reduce((t, r) => t + (Number(r.importo) || 0), 0));
   const aperte = rate.filter(r => !r.pagata);
   const scadute = aperte.filter(r => r.scadenza && r.scadenza < oggiIso).length;
@@ -279,4 +279,27 @@ export function daModello(m, base, nuovoId) {
   for (const s of q.sezioni || []) { s.id = nuovoId(); for (const v of s.voci || []) v.id = nuovoId(); }
   if (!q.sezioni || !q.sezioni.length) q.sezioni = base.sezioni;
   return q;
+}
+
+/* Lavori extra (varianti in corso d'opera): voci a parte, stessa IVA, senza sconto, con PDF e firma propri. */
+const totVariante = (p, x) => calc({ sezioni: [{ voci: x.voci || [] }], iva: p.iva }).totale;
+export function totaleVariante(p, x) { return totVariante(p, x); }
+export function totaleExtra(p) { return round2((p.extra || []).reduce((t, x) => t + totVariante(p, x), 0)); }
+export function nuovaVariante(p, oggiIso, nuovoId) {
+  const n = (p.extra || []).reduce((m, x) => Math.max(m, Number(x.n) || 0), 0) + 1;
+  return { id: nuovoId(), n, data: oggiIso, titolo: '', voci: [{ id: nuovoId(), desc: '', um: 'a corpo', qta: '', prezzo: '' }] };
+}
+/** Il «preventivo» da stampare per la variante i: solo le sue voci, il suo titolo e la sua firma. */
+export function documentoVariante(p, i) {
+  const x = (p.extra || [])[i]; if (!x) return null;
+  const d = JSON.parse(JSON.stringify(p));
+  for (const k of ['extra', 'revisioni', 'rate', 'spese', 'firma']) delete d[k];
+  return Object.assign(d, {
+    titoloDoc: `Variante n. ${x.n} al preventivo n. ${numStr(p)}`, varianteN: x.n,
+    oggetto: x.titolo || 'Lavori extra', data: x.data || p.data,
+    sezioni: [{ id: 'x' + x.n, titolo: x.titolo || 'Lavori extra', voci: JSON.parse(JSON.stringify(x.voci || [])) }],
+    sconto: { tipo: '%', valore: '' }, dettaglio: 'voci', tempi: '', pagamento: '',
+    note: `Lavori in aggiunta a quelli del preventivo n. ${numStr(p)}.`, stato: 'variante',
+    ...(x.firma ? { firma: JSON.parse(JSON.stringify(x.firma)) } : {})
+  });
 }

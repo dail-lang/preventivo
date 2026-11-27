@@ -716,6 +716,43 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2u. Lavori extra (varianti) su un preventivo accettato e firmato
+  {
+    const s = seedBase();
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    s.preventivi = [{ ...fx.acorpo, stato: 'accettato', firma: { png, nome: 'Mario Rossi', data: '2026-11-20' } }];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('#extra [data-act="xAdd"]').catch(() => {});
+    await page.fill('#extra [data-x="0"] [data-xv="desc"]', 'Spostamento termosifone').catch(() => {});
+    await page.selectOption('#extra [data-x="0"] [data-xv="um"]', 'a corpo').catch(() => {});
+    await page.fill('#extra [data-x="0"] [data-xv="prezzo"]', '300').catch(() => {});
+    await page.waitForTimeout(300);
+    check('extra: si scrive anche se il preventivo è firmato (nessuna revisione chiesta)', !(await page.isVisible('#modal').catch(() => false)) && (await page.inputValue('#extra [data-x="0"] [data-xv="prezzo"]').catch(() => '')) === '300');
+    check('extra: totale della variante con IVA', (await page.textContent('#extra [data-x="0"] .x-tot').catch(() => '')).includes('€ 330,00'));
+    check('extra: totale con i lavori extra', (await page.textContent('#extra-tot').catch(() => '')).includes('€ 5.030,30'));
+    check('extra: nei pagamenti «Da incassare» li conta', (await page.textContent('#pg-sum').catch(() => '')).includes('€ 5.030,30'));
+    await page.waitForTimeout(700);
+    await page.click('#extra [data-x="0"] [data-act="xPdf"]').catch(() => {});
+    await page.waitForSelector('#pv-actions:not([hidden])', { timeout: 30000 }).catch(() => {});
+    check('extra: PDF della variante', /variante 1/i.test(await page.textContent('#preview .info b').catch(() => '')));
+    await page.click('#pv-actions [data-act="firma"]').catch(() => {});
+    await page.waitForSelector('#fi-pad', { timeout: 3000 }).catch(() => {});
+    const bx = await page.$eval('#fi-pad', e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }).catch(() => null);
+    if (bx) { await page.mouse.move(bx.x + 30, bx.y + bx.h / 2); await page.mouse.down(); for (let i = 1; i < 15; i++) await page.mouse.move(bx.x + 30 + i * 15, bx.y + bx.h / 2 + (i % 2 ? 20 : -20)); await page.mouse.up(); }
+    await page.click('#fi-ok').catch(() => {});
+    await page.waitForTimeout(800);
+    await page.click('#pv-close').catch(() => {});
+    await page.waitForTimeout(400);
+    const xt = await page.textContent('#extra [data-x="0"]').catch(() => '');
+    check('extra: variante firmata e bloccata', /Firmata da/.test(xt) && await page.isDisabled('#extra [data-x="0"] [data-xv="prezzo"]').catch(() => false), xt.slice(0, 120));
+    check('extra: la firma del preventivo resta quella di prima', (await page.textContent('#main').catch(() => '')).includes('Firmato da Mario Rossi') && (await page.inputValue('#f-stato')) === 'accettato');
+    check('extra: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();
