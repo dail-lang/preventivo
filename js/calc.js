@@ -303,3 +303,19 @@ export function documentoVariante(p, i) {
     ...(x.firma ? { firma: JSON.parse(JSON.stringify(x.firma)) } : {})
   });
 }
+
+/* Costi reali del cantiere (consuntivo): spese vere senza IVA contro il ricavo senza IVA (preventivo + varianti). */
+export const TIPI_SPESA = [['materiali', 'Materiali'], ['manodopera', 'Manodopera'], ['altro', 'Altro']];
+export function consuntivo(p) {
+  const ricavo = round2(calc(p).imponibile + (p.extra || []).reduce((t, x) => t + calc({ sezioni: [{ voci: x.voci || [] }], iva: p.iva }).imponibile, 0));
+  const perTipo = { materiali: 0, manodopera: 0, altro: 0 };
+  for (const s of p.spese || []) {
+    const v = num(s.importo); if (!isFinite(v)) continue;
+    const k = perTipo[s.tipo] !== undefined ? s.tipo : 'altro';
+    perTipo[k] = round2(perTipo[k] + v);
+  }
+  const costi = round2(perTipo.materiali + perTipo.manodopera + perTipo.altro);
+  const margine = round2(ricavo - costi);
+  const m = calcMargine(p);
+  return { ricavo, costi, perTipo, margine, perc: ricavo > 0 ? Math.round(margine / ricavo * 1000) / 10 : 0, previsto: m.conCosto ? m : null };
+}

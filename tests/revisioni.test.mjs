@@ -125,3 +125,24 @@ test('varianti: PDF «Variante n. 1 al preventivo», con la firma della variante
   assert.ok(!s.includes('Ristrutturazione bagno comprensiva'), 'non ripete le voci del preventivo');
   assert.match(fileName(d), /2026-007 variante 1/);
 });
+
+import { consuntivo } from '../js/calc.js';
+test('costi reali: margine vero sul ricavo senza IVA (anche varianti), confronto col previsto, mai nel PDF', () => {
+  const p = { ...base(), stato: 'accettato' };
+  p.sezioni[0].voci[0].costo = '3000';
+  p.extra = [{ id: 'x', n: 1, voci: [{ id: 'a', desc: 'Extra', um: 'a corpo', qta: '', prezzo: '227' }] }];
+  p.spese = [
+    { id: 's1', data: '2026-11-20', desc: 'Piastrelle', tipo: 'materiali', importo: 1200 },
+    { id: 's2', data: '2026-11-21', desc: 'Manodopera 3 giorni', tipo: 'manodopera', importo: 1500 },
+    { id: 's3', data: '2026-11-22', desc: 'Noleggio', tipo: 'altro', importo: '' }
+  ];
+  const c = consuntivo(p);
+  assert.equal(c.ricavo, 4500, '4273 + 227, senza IVA');
+  assert.equal(c.costi, 2700);
+  assert.deepEqual(c.perTipo, { materiali: 1200, manodopera: 1500, altro: 0 });
+  assert.equal(c.margine, 1800);
+  assert.equal(c.perc, 40);
+  assert.equal(c.previsto.margine, 1273);
+  assert.equal(consuntivo({ ...base() }).previsto, null);
+  assert.ok(!JSON.stringify(buildDoc(p, { ragione: 'X' }, null)).includes('Piastrelle'));
+});

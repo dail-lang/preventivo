@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf, rateDaTesto, ricalcolaRate, statoPagamenti, RATE_BASE, segnaRichiamato, modelloDa, daModello, nuovaVariante, totaleVariante, totaleExtra, documentoVariante } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf, rateDaTesto, ricalcolaRate, statoPagamenti, RATE_BASE, segnaRichiamato, modelloDa, daModello, nuovaVariante, totaleVariante, totaleExtra, documentoVariante, consuntivo, TIPI_SPESA } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -549,6 +549,12 @@ function renderEditor() {
       <button class="btn" type="button" data-act="xAdd">${IC.plus} Nuova variante</button>
       <div class="pg-sum" id="extra-tot" style="margin-top:12px">${extraTotHtml(p)}</div>
     </section>`}
+    ${p.esempio ? '' : `<section class="card" id="spese"${mostraExtra(p) || (p.spese || []).length ? '' : ' hidden'}>
+      <h2>Costi reali del cantiere <small>solo per voi, importi senza IVA: non vanno nel PDF</small></h2>
+      <div class="pg-sum" id="sp-sum">${speseSumHtml(p)}</div>
+      <div id="sp-list">${(p.spese || []).map(spesaHtml).join('')}</div>
+      <button class="btn" type="button" data-act="spAdd" style="margin-top:10px">${IC.plus} Aggiungi spesa</button>
+    </section>`}
     ${p.esempio ? '' : `<section class="card" id="pagamenti">
       <h2>Pagamenti <small>acconti e saldo, solo per voi: il PDF non cambia</small></h2>
       <div id="pg-body">${pagamentiHtml(p)}</div>
@@ -637,6 +643,7 @@ function updateTotals() {
   set('t-iva', fmtEur(c.iva));
   set('t-tot', fmtEur(c.totale));
   aggiornaExtra();
+  aggiornaSpese();
   aggiornaPagamenti();
   const m = calcMargine(p);
   const mw = $('#t-marg-w');
@@ -739,7 +746,7 @@ main.addEventListener('input', e => {
     setPath(p, t.dataset.f, v);
     if (t.dataset.f === 'cliente.nome') fillCliente(t.value);
     if (t.dataset.f === 'stato' && v === 'inviato') { p.dataInvio = today(); delete p.richiamato; }
-    if (t.dataset.f === 'stato') { const ex = $('#extra'); if (ex) ex.hidden = !mostraExtra(p); }
+    if (t.dataset.f === 'stato') { const ex = $('#extra'); if (ex) ex.hidden = !mostraExtra(p); const sp = $('#spese'); if (sp) sp.hidden = !mostraExtra(p) && !(p.spese || []).length; }
     if (t.dataset.f === 'numero' && v !== '') { $('.ed-top h1').textContent = numStr(p); $('#dupwrap').innerHTML = dupNote(p); }
   } else if (t.dataset.v) {
     const si = +t.closest('[data-sez]').dataset.sez, vi = +t.closest('[data-voce]').dataset.voce;
@@ -749,6 +756,10 @@ main.addEventListener('input', e => {
     if (t.dataset.v === 'um') { const q = $('[data-v="qta"]', t.closest('.voce')); if (q) q.placeholder = t.value === 'a corpo' ? '1' : 'es. 3,5*4'; }
   } else if (t.dataset.s) {
     p.sezioni[+t.closest('[data-sez]').dataset.sez][t.dataset.s] = t.value;
+  } else if (t.dataset.sp) {
+    const sp = (p.spese || [])[+t.closest('[data-spi]').dataset.spi]; if (!sp) return;
+    if (t.dataset.sp === 'importo') { const v = num(t.value); sp.importo = t.value.trim() && isFinite(v) ? round2(v) : ''; }
+    else sp[t.dataset.sp] = t.value;
   } else if (t.dataset.xv || t.dataset.xt) {
     const x = (p.extra || [])[+t.closest('[data-x]').dataset.x]; if (!x || x.firma) return;
     if (t.dataset.xt) x.titolo = t.value;
@@ -828,6 +839,12 @@ async function onAct(b) {
     }
     case 'revisioni': flushEditor(); apriRevisioni(); break;
     case 'modello': flushEditor(); salvaModello(p); break;
+    case 'spAdd': (p.spese = p.spese || []).push({ id: uid(), data: today(), desc: '', tipo: 'materiali', importo: '' }); ridisegnaSpese(); markDirty(); { const d = $$('#spese [data-sp="desc"]'); if (d.length) d[d.length - 1].focus(); } break;
+    case 'spDel': {
+      const i = +b.closest('[data-spi]').dataset.spi; const sp = (p.spese || [])[i]; if (!sp) break;
+      if ((sp.desc || sp.importo) && !(await confirmBox('Togliere questa spesa?', `${sp.desc || 'La spesa'} viene tolta dai costi reali.`, 'Togli'))) break;
+      p.spese.splice(i, 1); ridisegnaSpese(); markDirty(); break;
+    }
     case 'xAdd': (p.extra = p.extra || []).push(nuovaVariante(p, today(), uid)); ridisegnaExtra(); markDirty(); { const t = $$('#extra [data-xt]'); if (t.length) t[t.length - 1].focus(); } break;
     case 'xDel': case 'xvAdd': case 'xvDel': case 'xPdf': {
       const xi = +b.closest('[data-x]').dataset.x; const x = (p.extra || [])[xi]; if (!x) break;
@@ -1361,6 +1378,27 @@ function aggiornaExtra() {
   $$('#extra [data-x]').forEach(el => { const x = (p.extra || [])[+el.dataset.x]; const t = $('.x-tot', el); if (x && t) t.innerHTML = xTotHtml(x); });
   const tot = $('#extra-tot'); if (tot) tot.innerHTML = extraTotHtml(p);
 }
+
+/* ---------- Costi reali del cantiere ---------- */
+function spesaHtml(s, i) {
+  return `<div class="spesa" data-spi="${i}">
+    <label class="field sd"><span>Descrizione</span><input class="in" data-sp="desc" value="${esc(s.desc || '')}" placeholder="Es. Piastrelle, 3 giorni di 2 operai, noleggio"></label>
+    <label class="field st"><span>Tipo</span><select class="in" data-sp="tipo">${opt(TIPI_SPESA, s.tipo || 'materiali')}</select></label>
+    <label class="field sg"><span>Data</span><input class="in" type="date" data-sp="data" value="${esc(s.data || '')}"></label>
+    <label class="field si"><span>Importo €</span><input class="in r" data-sp="importo" inputmode="decimal" value="${esc(s.importo === '' || s.importo == null ? '' : String(s.importo).replace('.', ','))}" placeholder="0,00"></label>
+    <button class="icon-btn del sx" type="button" data-act="spDel" aria-label="Togli spesa">${IC.trash}</button>
+  </div>`;
+}
+function speseSumHtml(p) {
+  const c = consuntivo(p);
+  if (!(p.spese || []).length) return `<span>Ricavo senza IVA <b>${fmtEur(c.ricavo)}</b></span><span>Segna qui materiali, manodopera e altre spese per vedere quanto ti resta davvero.</span>`;
+  const t = TIPI_SPESA.filter(([k]) => c.perTipo[k]).map(([k, l]) => `${l.toLowerCase()} ${fmtEur(c.perTipo[k])}`).join(', ');
+  return `<span>Ricavo senza IVA <b>${fmtEur(c.ricavo)}</b></span><span>Spese <b>${fmtEur(c.costi)}</b>${t ? ` (${t})` : ''}</span>`
+    + `<span class="${c.margine < 0 ? 'neg' : 'pos'}">Margine reale <b>${fmtEur(c.margine)} · ${fmtNum(c.perc, 1)}%</b></span>`
+    + (c.previsto ? `<span>Previsto dai costi delle voci <b>${fmtEur(c.previsto.margine)} · ${fmtNum(c.previsto.perc, 1)}%</b></span>` : '');
+}
+function aggiornaSpese() { const el = $('#sp-sum'); if (el && S.current) el.innerHTML = speseSumHtml(S.current); }
+function ridisegnaSpese() { const l = $('#sp-list'); if (l && S.current) l.innerHTML = (S.current.spese || []).map(spesaHtml).join(''); aggiornaSpese(); }
 
 /* ---------- Pagamenti ---------- */
 const eur2 = n => (isFinite(n) ? fmtNum(n, 2) : '');

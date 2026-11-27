@@ -753,6 +753,35 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2v. Costi reali del cantiere (anche su un preventivo firmato)
+  {
+    const s = seedBase();
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    const ac = JSON.parse(JSON.stringify(fx.acorpo)); ac.stato = 'accettato'; ac.firma = { png, nome: 'Mario Rossi', data: '2026-11-20' }; ac.sezioni[0].voci[0].costo = '3000';
+    s.preventivi = [ac];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('#spese [data-act="spAdd"]').catch(() => {});
+    await page.fill('#spese [data-spi="0"] [data-sp="desc"]', 'Piastrelle').catch(() => {});
+    await page.fill('#spese [data-spi="0"] [data-sp="importo"]', '1200').catch(() => {});
+    await page.click('#spese [data-act="spAdd"]').catch(() => {});
+    await page.fill('#spese [data-spi="1"] [data-sp="desc"]', 'Manodopera 3 giorni').catch(() => {});
+    await page.selectOption('#spese [data-spi="1"] [data-sp="tipo"]', 'manodopera').catch(() => {});
+    await page.fill('#spese [data-spi="1"] [data-sp="importo"]', '1500').catch(() => {});
+    await page.waitForTimeout(300);
+    check('costi reali: si scrivono anche se il preventivo è firmato', !(await page.isVisible('#modal').catch(() => false)));
+    const sum = await page.textContent('#sp-sum').catch(() => '');
+    check('costi reali: spese, margine reale e previsto', sum.includes('€ 2.700,00') && sum.includes('€ 1.573,00') && sum.includes('36,8%') && sum.includes('€ 1.273,00'), sum);
+    await page.waitForTimeout(800);
+    await page.click('.ed-top [data-act="back"]'); await page.waitForTimeout(500);
+    await page.click('[data-open="acorpo"]'); await page.waitForTimeout(300);
+    check('costi reali: restano salvati', (await page.inputValue('#spese [data-spi="1"] [data-sp="desc"]').catch(() => '')) === 'Manodopera 3 giorni');
+    check('costi reali: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();
