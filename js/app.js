@@ -294,6 +294,7 @@ function go(view) {
   if (S.rilievo) { flushRilievo(); S.rilievo = null; closeLayer('rilievo'); }
   if ((S.view === 'agenda' || (S.view === 'editor' && S.indietro === 'agenda')) && view !== 'agenda' && view !== 'editor') closeLayer('agenda');
   const daEditor = S.view === 'editor';
+  if (view === 'agenda' && S.view !== 'agenda' && !daEditor) S.settimana = lunediDi(today());
   if (view !== 'editor' && !(daEditor && view === 'agenda')) S.indietro = 'lista';
   S.view = view;
   render();
@@ -304,7 +305,7 @@ $('#brand').addEventListener('click', () => go('lista'));
 
 function render(fromData) {
   document.body.classList.toggle('in-editor', S.view === 'editor');
-  $$('#app [data-view]').forEach(t => t.setAttribute('aria-current', (t.dataset.view === S.view || (S.view === 'editor' && t.dataset.view === 'lista')) ? 'page' : 'false'));
+  $$('#app [data-view]').forEach(t => t.setAttribute('aria-current', (t.dataset.view === S.view || (S.view === 'editor' && t.dataset.view === (S.indietro === 'agenda' ? 'agenda' : 'lista'))) ? 'page' : 'false'));
   if (S.view !== 'editor') $('#totbar').innerHTML = '';
   if (S.view === 'lista') return renderLista(fromData);
   if (S.view === 'listino') return fromData && $('#lq') ? renderListinoRows() : renderListino();
@@ -819,7 +820,7 @@ async function onAct(b) {
   if (S.view === 'editor' && p && p.firma && ATTI_CONTENUTO.includes(act)) { revisionePerModificare(); return; }
   if (act === 'new') { if (S.modelli.length) return scegliModello(); const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
   if (act === 'modelli') return scegliModello();
-  if (act === 'agenda') { S.settimana = lunediDi(today()); S.view = 'agenda'; openLayer('agenda', () => { S.view = 'lista'; render(); }); render(); window.scrollTo(0, 0); return; }
+  if (act === 'agenda') return go('agenda');
   if (S.view === 'agenda' && (await onActAgenda(act, b))) return;
   if (act === 'lNew') return editListino(null);
   if (act === 'fiDisegna') {

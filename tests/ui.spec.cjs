@@ -510,8 +510,8 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     page.setDefaultTimeout(5000);
     await page.waitForSelector('[data-open]');
     const ordine = await page.$$eval('#bottomnav [data-view]', a => a.map(x => x.dataset.view).join(','));
-    check('rilievi: «Misure» in basso tra Listino e Clienti', ordine === 'lista,listino,misure,clienti,impostazioni', ordine);
-    check('rilievi: «Misure» anche nel menu in alto', (await page.$$eval('.tabs [data-view]', a => a.map(x => x.dataset.view).join(','))) === 'lista,listino,misure,clienti,impostazioni');
+    check('rilievi: «Misure» in basso tra Listino e Clienti', ordine === 'lista,agenda,listino,misure,clienti,impostazioni', ordine);
+    check('rilievi: «Misure» anche nel menu in alto', (await page.$$eval('.tabs [data-view]', a => a.map(x => x.dataset.view).join(','))) === 'lista,agenda,listino,misure,clienti,impostazioni');
     await page.locator('[data-view="misure"]:visible').first().click().catch(() => {});
     await page.click('[data-act="mNew"]').catch(() => {});
     await page.waitForSelector('#rl-nome').catch(() => {});
@@ -970,6 +970,24 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await page.waitForTimeout(200);
     check('agenda: se non è accettato lo dice', /non compare in agenda/i.test(await page.textContent('#agenda').catch(() => '')));
     check('agenda (2): nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  // 2zc. Agenda nella barra in basso, sempre raggiungibile (anche senza lavori)
+  {
+    const s = seedBase(); s.preventivi = [];
+    const { page, ctx, errors } = await open(browser, 'iPhone SE', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('#main .head h1');
+    const ordine = await page.$$eval('#bottomnav [data-view]', a => a.map(x => x.dataset.view).join(','));
+    check('agenda in basso: seconda icona, dopo Preventivi', ordine.startsWith('lista,agenda,'), ordine);
+    const strette = await page.$$eval('#bottomnav button', a => a.filter(b => b.scrollWidth > b.clientWidth + 1).map(b => b.textContent.trim()));
+    check('agenda in basso: tutte le scritte stanno nell\'iPhone SE', strette.length === 0, strette.join(', '));
+    await page.click('#bottomnav [data-view="agenda"]').catch(() => {});
+    await page.waitForTimeout(300);
+    check('agenda in basso: si apre anche senza lavori accettati', /Settimana dal/.test(await page.textContent('#main h1').catch(() => '')) && (await page.getAttribute('#bottomnav [data-view="agenda"]', 'aria-current')) === 'page');
+    check('agenda in basso: si possono aggiungere note', !!(await page.$('[data-act="agNota"]')));
+    check('agenda in basso: nessun errore', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
 
