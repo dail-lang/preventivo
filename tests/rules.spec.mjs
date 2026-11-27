@@ -67,6 +67,15 @@ test('foto del sopralluogo: autorizzati sì, estranei no', async () => {
   await assertFails(setDoc(doc(x, 'foto/f3'), { preventivoId: 'p1', dataURL: 'x' }));
 });
 
+test('rilievi delle misure: autorizzati sì, estranei no', async () => {
+  const m = ctx('m', 'moglie@example.com');
+  await assertSucceeds(setDoc(doc(m, 'misure/m1'), { nome: 'Rossi', stanze: [] }));
+  await assertSucceeds(getDoc(doc(ctx('o', OWNER), 'misure/m1')));
+  const x = ctx('x', 'sconosciuto@example.com');
+  await assertFails(getDoc(doc(x, 'misure/m1')));
+  await assertFails(setDoc(doc(x, 'misure/m2'), { nome: 'x' }));
+});
+
 test('collezioni non previste: chiuse anche al titolare', async () => {
   const db = ctx('o', OWNER);
   await assertFails(setDoc(doc(db, 'altro/x'), { a: 1 }));

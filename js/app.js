@@ -4,7 +4,7 @@ import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
 import { LISTINO_RIMINI, pianoListino } from './listino-rimini.js';
-import { areeStanza, espressione } from './misure.js';
+import { areeStanza, espressione, perimetro, totaliStanze } from './misure.js';
 import { VERSIONE } from './versione.js';
 import { firebaseConfig } from '../firebase-config.js';
 
@@ -28,7 +28,7 @@ export const AZIENDA_BASE = {
 /* ---------- Stato ---------- */
 const S = {
   view: 'lista', user: null, persone: [], started: false,
-  loaded: { preventivi: false, listino: false, clienti: false },
+  loaded: { preventivi: false, listino: false, clienti: false, misure: false }, misure: [], rilievo: null, mq: '',
   preventivi: [], listino: [], clienti: [], azienda: { ...AZIENDA_BASE },
   current: null, base: null, seen: false, gone: false, filter: 'tutti', q: '', lq: '', cq: '', sync: { online: true, pending: false }
 };
@@ -242,7 +242,7 @@ function trasferimentoBanner() {
 
 function startCollections() {
   controllaLocale();
-  for (const name of ['preventivi', 'listino', 'clienti']) {
+  for (const name of ['preventivi', 'listino', 'clienti', 'misure']) {
     unsubs.push(store.subscribe(name, list => {
       S[name] = list; S.loaded[name] = true;
       render(true);
@@ -282,6 +282,7 @@ function write(coll, id, data) {
 const main = $('#main');
 function go(view) {
   if (S.view === 'editor' && view !== 'editor') { flushEditor(); S.current = null; closeLayer('editor'); seguiFoto(null); }
+  if (S.rilievo) { flushRilievo(); S.rilievo = null; closeLayer('rilievo'); }
   S.view = view;
   render();
   window.scrollTo(0, 0);
@@ -296,6 +297,7 @@ function render(fromData) {
   if (S.view === 'lista') return renderLista(fromData);
   if (S.view === 'listino') return fromData && $('#lq') ? renderListinoRows() : renderListino();
   if (S.view === 'clienti') return fromData && $('#cq') ? renderClientiRows() : renderClienti();
+  if (S.view === 'misure') return S.rilievo ? (fromData ? null : renderRilievo()) : (fromData && $('#mq') ? renderMisureRows() : renderMisure());
   if (S.view === 'impostazioni') return fromData ? null : renderImpostazioni();
   if (S.view === 'editor') return fromData ? refreshEditorData() : renderEditor();
 }
@@ -418,7 +420,7 @@ function voceHtml(v, si, vi, nv) {
     <span class="vn">${si + 1}.${vi + 1}</span>
     <div class="d"><span class="lbl">Descrizione</span><textarea class="in" rows="1" data-v="desc" enterkeyhint="next" placeholder="Es. Posa pavimento in gres porcellanato 60×60" aria-label="Descrizione voce ${si + 1}.${vi + 1}">${esc(v.desc)}</textarea></div>
     <div class="u"><span class="lbl">U.M.</span><select class="in" data-v="um" aria-label="Unità di misura">${opt(UM.map(u => [u, u]), v.um)}</select></div>
-    <div class="q"><span class="lbl">Quantità</span><div class="qbox"><input class="in r" data-v="qta" inputmode="decimal" enterkeyhint="next" placeholder="${v.um === 'a corpo' ? '1' : 'es. 3,5*4'}" value="${esc(v.qta)}" aria-label="Quantità"><button class="icon-btn" type="button" data-act="vMisure" aria-label="Calcola dalle misure della stanza" title="Misure">${IC.metro}</button></div><span class="calc"></span></div>
+    <div class="q"><span class="lbl">Quantità</span><div class="qbox"><input class="in r" data-v="qta" inputmode="decimal" enterkeyhint="next" placeholder="${v.um === 'a corpo' ? '1' : 'es. 3,5*4'}" value="${esc(v.qta)}" aria-label="Quantità"><button class="icon-btn mis" type="button" data-act="vMisure" aria-label="Calcola dalle misure della stanza" title="Calcola dalle misure della stanza">${IC.metro}<span>Misure</span></button></div><span class="calc"></span></div>
     <div class="p"><span class="lbl">Prezzo €</span><input class="in r" data-v="prezzo" inputmode="decimal" enterkeyhint="done" placeholder="0,00" value="${esc(v.prezzo)}" aria-label="Prezzo unitario"><span class="calc"></span></div>
     <div class="imp"><span class="lbl">Importo</span><span class="iv">—</span></div>
     <div class="vc"><label><span>Costo tuo €</span><input class="in r" data-v="costo" inputmode="decimal" enterkeyhint="done" placeholder="facoltativo" value="${esc(v.costo ?? '')}" aria-label="Costo unitario (non va nel PDF)"></label><span class="mg"></span></div>
@@ -708,6 +710,7 @@ main.addEventListener('change', e => {
 main.addEventListener('input', e => {
   const t = e.target;
   if (S.view === 'impostazioni' && t.dataset.set) return onSettingInput(t);
+  if (S.view === 'misure' && S.rilievo) return onRilievoInput(t);
   if (S.view !== 'editor' || !S.current) return;
   const p = S.current;
   if (t.dataset.f) {
@@ -738,6 +741,7 @@ main.addEventListener('input', e => {
 
 async function onAct(b) {
   const act = b.dataset.act; const p = S.current;
+  if (S.view === 'misure' && (await onActMisure(act, b))) return;
   if (S.view === 'editor' && p && p.firma && ATTI_CONTENUTO.includes(act)) { revisionePerModificare(); return; }
   if (act === 'new') { const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
   if (act === 'lNew') return editListino(null);
@@ -868,6 +872,7 @@ document.addEventListener('click', e => {
   if (filt && S.view === 'lista') { S.filter = S.filter === filt.dataset.filter && filt.classList.contains('sum') ? 'tutti' : filt.dataset.filter; renderLista(); return; }
   const open = e.target.closest('#main [data-open]');
   if (open) { const p = S.preventivi.find(x => x.id === open.dataset.open); if (p) openEditor(p); return; }
+  const rl = e.target.closest('#main [data-rl]'); if (rl) { const x = S.misure.find(i => i.id === rl.dataset.rl); if (x) apriRilievo(x); return; }
   const li = e.target.closest('#main [data-li]'); if (li) { const x = S.listino.find(i => i.id === li.dataset.li); if (x) editListino(x); return; }
   const cl = e.target.closest('#main [data-cl]'); if (cl) { const x = S.clienti.find(i => i.id === cl.dataset.cl); if (x) editCliente(x); return; }
   const ft = e.target.closest('#main [data-foto]'); if (ft) { apriFoto(ft.dataset.foto); return; }
@@ -935,9 +940,137 @@ function pickListino(si) {
   });
 }
 
+/* ---------- Rilievi delle misure (fuori dal preventivo) ---------- */
+const mqTxt = n => `${fmtNum(n)} mq`;
+function risultatiHtml(a, per) {
+  return `<span>Pavimento <b>${mqTxt(a.pavimento)}</b></span><span>Soffitto <b>${mqTxt(a.soffitto)}</b></span><span>Pareti <b>${mqTxt(a.pareti)}</b></span><span>Perimetro <b>${fmtNum(per)} ml</b></span>`;
+}
+function renderMisure() {
+  main.innerHTML = `
+    <div class="head"><div><span class="eyebrow">Rilievi in cantiere</span><h1>Misure</h1></div>
+      <button class="btn primary" type="button" data-act="mNew">${IC.plus} Nuovo rilievo</button></div>
+    <div class="toolbar"><input class="in search" id="mq" type="search" enterkeyhint="search" placeholder="Cerca per nome o stanza" value="${esc(S.mq)}" aria-label="Cerca rilievo"></div>
+    <div class="tbl" id="mrows"></div>`;
+  $('#mq').addEventListener('input', e => { S.mq = e.target.value; renderMisureRows(); });
+  renderMisureRows(); enter();
+}
+function renderMisureRows() {
+  const box = $('#mrows'); if (!box) return;
+  if (!S.loaded.misure) { box.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>'; return; }
+  if (!S.misure.length) { box.innerHTML = `<div class="empty"><h3>Nessun rilievo</h3><p>Segna qui le misure delle stanze quando sei in cantiere: pavimento, pareti e perimetro si calcolano da soli e tutto si salva mentre scrivi. Poi le carichi nel preventivo con il pulsante «Misure».</p><button class="btn primary" type="button" data-act="mNew">${IC.plus} Nuovo rilievo</button></div>`; return; }
+  const q = S.mq.trim().toLowerCase();
+  const items = S.misure.filter(r => !q || [r.nome, ...(r.stanze || []).map(s => s.nome)].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => String(b.modificato || b.creato || '').localeCompare(String(a.modificato || a.creato || '')));
+  if (!items.length) { box.innerHTML = '<div class="empty"><p>Nessun rilievo trovato.</p></div>'; return; }
+  box.innerHTML = items.map(r => {
+    const n = (r.stanze || []).length; const t = totaliStanze(r.stanze);
+    const nomi = (r.stanze || []).map(s => s.nome).filter(Boolean).join(', ');
+    return `<button class="li" type="button" data-rl="${esc(r.id)}"><span class="d"><b style="font-weight:600">${esc(r.nome || 'Rilievo senza nome')}</b></span><span class="s">${n} ${n === 1 ? 'stanza' : 'stanze'}${nomi ? ' · ' + esc(nomi) : ''} · ${esc(fmtDate(r.data))}</span><span class="p">${mqTxt(t.pavimento)}</span></button>`;
+  }).join('');
+}
+const nuovaStanza = h => ({ nome: '', l: '', p: '', h: h || '2,70', aperture: [] });
+function apriRilievo(r) {
+  if (!S.rilievo) openLayer('rilievo', () => { flushRilievo(); S.rilievo = null; render(); });
+  S.rilievo = clone(r); render(); window.scrollTo(0, 0);
+}
+function chiudiRilievo() { flushRilievo(); S.rilievo = null; closeLayer('rilievo'); render(); window.scrollTo(0, 0); }
+let rilievoTimer = null;
+function markRilievo() { setSaveState('saving'); clearTimeout(rilievoTimer); rilievoTimer = setTimeout(salvaRilievo, 600); }
+function salvaRilievo() {
+  clearTimeout(rilievoTimer); rilievoTimer = null;
+  const r = S.rilievo; if (!r) return;
+  r.modificato = new Date().toISOString();
+  const { id, ...dati } = r;
+  write('misure', id, dati);
+}
+function flushRilievo() { if (rilievoTimer) salvaRilievo(); }
+function stanzaHtml(s, i) {
+  const f = (k, lbl, ph) => `<label class="field"><span>${lbl}</span><input class="in r" data-k="${k}" inputmode="decimal" value="${esc(s[k] ?? '')}" placeholder="${ph}"></label>`;
+  return `<section class="card rl-st" data-st="${i}">
+    <div class="rl-h"><input class="in" data-k="nome" autocapitalize="sentences" value="${esc(s.nome || '')}" placeholder="Stanza ${i + 1} (es. Bagno)" aria-label="Nome della stanza"><button class="icon-btn del" type="button" data-act="mStDel" aria-label="Togli stanza">${IC.trash}</button></div>
+    <div class="grid rl-dim">${f('l', 'Lunghezza m', 'es. 4')}${f('p', 'Larghezza m', 'es. 3,5')}${f('h', 'Altezza m', '2,70')}</div>
+    ${(s.aperture || []).map((a, j) => `<div class="grid rl-ap" data-ap="${j}">
+      <label class="field"><span>Porta/finestra largh.</span><input class="in r" data-k="al" inputmode="decimal" value="${esc(a.l ?? '')}" placeholder="0,8"></label>
+      <label class="field"><span>Altezza</span><input class="in r" data-k="ah" inputmode="decimal" value="${esc(a.h ?? '')}" placeholder="2,1"></label>
+      <label class="field"><span>Quante</span><input class="in r" data-k="an" inputmode="decimal" value="${esc(a.n ?? '')}" placeholder="1"></label>
+      <button class="icon-btn del" type="button" data-act="mApDel" aria-label="Togli porta o finestra">${IC.x}</button></div>`).join('')}
+    <button class="btn" type="button" data-act="mAp">${IC.plus} Porta o finestra da togliere</button>
+    <div class="rl-ris" aria-live="polite">${risultatiHtml(areeStanza(s), perimetro(s))}</div>
+  </section>`;
+}
+function renderRilievo() {
+  const r = S.rilievo;
+  main.innerHTML = `
+    <div class="ed-top">
+      <button class="btn ghost" type="button" data-act="back" aria-label="Torna alle misure">${IC.back}<span class="back-label">Misure</span></button>
+      <div class="ttl"><span class="eyebrow">Rilievo</span><h1 id="rl-h1">${esc(r.nome || 'Nuovo rilievo')}</h1></div>
+      <span class="savestate" id="saveState" aria-live="polite"></span>
+      <div class="ed-actions"><button class="btn danger" type="button" data-act="mDel">Elimina</button></div>
+    </div>
+    <section class="card">
+      <div class="grid two">
+        <label class="field"><span>Nome del rilievo</span><input class="in" id="rl-nome" autocapitalize="sentences" value="${esc(r.nome || '')}" placeholder="Es. Appartamento Rossi, via Roma 3"></label>
+        <label class="field"><span>Data</span><input class="in" id="rl-data" type="date" value="${esc(r.data || '')}"></label>
+      </div>
+      <p class="help" style="margin:10px 0 0;font-size:13px;color:var(--stone)">Si salva da solo mentre scrivi. Nel preventivo lo carichi dal pulsante «Misure» della quantità.</p>
+    </section>
+    <div id="rl-stanze" class="rl-stanze">${(r.stanze || []).map(stanzaHtml).join('')}</div>
+    <button class="btn rl-add" type="button" data-act="mStanza">${IC.plus} Aggiungi stanza</button>
+    <section class="card rl-totc"><h2>Totale ${(r.stanze || []).length > 1 ? `di ${r.stanze.length} stanze` : ''}</h2><div class="rl-ris" id="rl-tot">${totHtml(r)}</div></section>`;
+  enter();
+}
+function totHtml(r) { const t = totaliStanze(r.stanze); return risultatiHtml(t, t.perimetro); }
+function onRilievoInput(t) {
+  const r = S.rilievo;
+  if (t.id === 'rl-nome') { r.nome = t.value; const h = $('#rl-h1'); if (h) h.textContent = t.value.trim() || 'Nuovo rilievo'; }
+  else if (t.id === 'rl-data') r.data = t.value;
+  else if (t.dataset.k) {
+    const sEl = t.closest('[data-st]'); const s = r.stanze[+sEl.dataset.st]; if (!s) return;
+    const apEl = t.closest('[data-ap]');
+    if (apEl) { const a = s.aperture[+apEl.dataset.ap]; if (!a) return; a[{ al: 'l', ah: 'h', an: 'n' }[t.dataset.k]] = t.value; }
+    else s[t.dataset.k] = t.value;
+    const ris = $('.rl-ris', sEl); if (ris) ris.innerHTML = risultatiHtml(areeStanza(s), perimetro(s));
+    $('#rl-tot').innerHTML = totHtml(r);
+  } else return;
+  markRilievo();
+}
+async function onActMisure(act, b) {
+  const r = S.rilievo;
+  if (act === 'mNew') {
+    apriRilievo({ id: uid(), nome: '', data: today(), stanze: [nuovaStanza()], creato: new Date().toISOString() });
+    setTimeout(() => { const n = $('#rl-nome'); if (n) n.focus(); }, 50);
+    return true;
+  }
+  if (!r) return false;
+  const si = b.closest('[data-st]') ? +b.closest('[data-st]').dataset.st : -1;
+  const ridisegna = sel => { const y = window.scrollY; renderRilievo(); window.scrollTo(0, y); markRilievo(); if (sel) { const el = $(sel); if (el) el.focus(); } };
+  switch (act) {
+    case 'back': chiudiRilievo(); return true;
+    case 'mStanza': { const ult = r.stanze[r.stanze.length - 1]; r.stanze.push(nuovaStanza(ult && ult.h)); ridisegna(`[data-st="${r.stanze.length - 1}"] [data-k="nome"]`); return true; }
+    case 'mStDel': {
+      const s = r.stanze[si]; const piena = s && (s.l || s.p || s.nome);
+      if (piena && !(await confirmBox('Togliere questa stanza?', `${s.nome || 'La stanza ' + (si + 1)} viene tolta dal rilievo.`, 'Togli'))) return true;
+      r.stanze.splice(si, 1); if (!r.stanze.length) r.stanze.push(nuovaStanza()); ridisegna(); return true;
+    }
+    case 'mAp': r.stanze[si].aperture.push({ l: '', h: '', n: '1' }); ridisegna(`[data-st="${si}"] [data-ap="${r.stanze[si].aperture.length - 1}"] [data-k="al"]`); return true;
+    case 'mApDel': r.stanze[si].aperture.splice(+b.closest('[data-ap]').dataset.ap, 1); ridisegna(); return true;
+    case 'mDel':
+      if (await confirmBox(`Eliminare il rilievo ${r.nome ? '«' + r.nome + '»' : ''}?`, 'Il rilievo viene cancellato per tutti. Non si può annullare.', 'Elimina')) {
+        clearTimeout(rilievoTimer); rilievoTimer = null;
+        if (S.misure.some(x => x.id === r.id)) write('misure', r.id, DEL);
+        S.rilievo = null; closeLayer('rilievo'); render(); toast('Rilievo eliminato');
+      }
+      return true;
+  }
+  return false;
+}
+
 /* ---------- Misure delle stanze ---------- */
 function apriMisure(si, vi) {
-  const stanze = [{ l: '', p: '', h: '2,70', aperture: [] }];
+  const voce = S.current && S.current.sezioni[si] && S.current.sezioni[si].voci[vi];
+  const stanze = voce && Array.isArray(voce.misure) && voce.misure.length ? clone(voce.misure) : [{ l: '', p: '', h: '2,70', aperture: [] }];
+  // le misure scritte restano sulla voce: riaprendo la finestra ci sono ancora
+  const ricorda = () => { if (!voce || !S.current) return; voce.misure = clone(stanze); markDirty(); };
   const campo = (id, lbl, v, ph) => `<label class="field"><span>${lbl}</span><input class="in" id="${id}" inputmode="decimal" value="${esc(v)}" placeholder="${ph || ''}"></label>`;
   const disegna = () => {
     $('#ms-stanze').innerHTML = stanze.map((s, i) => `<div class="ms-stanza" data-st="${i}">
@@ -960,23 +1093,31 @@ function apriMisure(si, vi) {
   };
   openModal(`<div class="sheet" id="ms" role="dialog" aria-modal="true" aria-labelledby="ms-t">
     <div class="sheet-h"><h2 id="ms-t">Misure della stanza</h2><button class="icon-btn" type="button" data-close="no" aria-label="Chiudi">${IC.x}</button></div>
-    <div class="sheet-b"><div id="ms-stanze"></div>
+    <div class="sheet-b">${S.misure.length ? `<label class="field"><span>Carica un rilievo salvato</span><select class="in" id="ms-rilievo"><option value="">— scegli —</option>${S.misure.slice().sort((x, y) => String(y.modificato || '').localeCompare(String(x.modificato || ''))).map(r => `<option value="${esc(r.id)}">${esc(r.nome || 'Rilievo senza nome')}</option>`).join('')}</select></label>` : ''}<div id="ms-stanze"></div>
       <button class="btn" type="button" data-act="msStanza">${IC.plus} Aggiungi un'altra stanza</button>
       <div class="ms-ris" id="ms-ris" aria-live="polite"></div>
       <p class="help" style="margin:0;font-size:13px;color:var(--stone)">Nella quantità resta il calcolo (es. 4*3,5): puoi sempre correggerlo.</p>
     </div></div>`);
   disegna();
-  $('#ms').addEventListener('input', aggiorna);
+  $('#ms').addEventListener('input', e => {
+    if (e.target.id === 'ms-rilievo') {
+      const r = S.misure.find(x => x.id === e.target.value); if (!r) return;
+      stanze.splice(0, stanze.length, ...clone(r.stanze || []).map(x => ({ l: x.l || '', p: x.p || '', h: x.h || '', aperture: x.aperture || [] })));
+      if (!stanze.length) stanze.push({ l: '', p: '', h: '2,70', aperture: [] });
+      disegna(); ricorda(); return;
+    }
+    aggiorna(); ricorda();
+  });
   $('#ms').addEventListener('click', e => {
     const b = e.target.closest('[data-act], [data-usa]'); if (!b) return;
-    if (b.dataset.act === 'msApertura') { leggi(); stanze[+b.dataset.st].aperture.push({ l: '', h: '', n: '1' }); disegna(); return; }
-    if (b.dataset.act === 'msStanza') { leggi(); stanze.push({ l: '', p: '', h: stanze[stanze.length - 1].h, aperture: [] }); disegna(); return; }
+    if (b.dataset.act === 'msApertura') { leggi(); stanze[+b.dataset.st].aperture.push({ l: '', h: '', n: '1' }); disegna(); ricorda(); return; }
+    if (b.dataset.act === 'msStanza') { leggi(); stanze.push({ l: '', p: '', h: stanze[stanze.length - 1].h, aperture: [] }); disegna(); ricorda(); return; }
     if (b.dataset.usa) {
       leggi();
       const expr = espressione(stanze, b.dataset.usa);
       if (!expr || !S.current) return;
       const v = S.current.sezioni[si].voci[vi];
-      v.qta = expr; v.um = 'mq';
+      v.qta = expr; v.um = 'mq'; v.misure = clone(stanze);
       closeModal(true);
       const row = $(`#sezioni [data-sez="${si}"] [data-voce="${vi}"]`);
       if (row) { $('[data-v="qta"]', row).value = expr; $('[data-v="um"]', row).value = 'mq'; }

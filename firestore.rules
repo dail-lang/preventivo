@@ -38,6 +38,8 @@ service cloud.firestore {
     match /impostazioni/{id} { allow read, write: if isAllowed(); }
     // Foto del sopralluogo: una per documento, già ridotte sul telefono (sotto il limite di 1 MB).
     match /foto/{id}       { allow read, write: if isAllowed(); }
+    // Rilievi delle misure fatti in cantiere (anche fuori dal preventivo).
+    match /misure/{id}     { allow read, write: if isAllowed(); }
 
     // Tutto il resto è chiuso.
   }

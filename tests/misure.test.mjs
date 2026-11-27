@@ -24,3 +24,11 @@ test('espressione: con la virgola, ricalcolabile e sommabile su più stanze', ()
   assert.equal(num(espressione(due, 'pavimento')), 23);
   assert.equal(espressione([{ l: '', p: '', h: '' }], 'pavimento'), '');
 });
+
+import { perimetro, totaliStanze } from '../js/misure.js';
+test('perimetro (battiscopa) e totali di tutte le stanze', () => {
+  assert.equal(perimetro(st), 15);
+  assert.equal(perimetro({ l: 4, p: '' }), 0);
+  assert.deepEqual(totaliStanze([st, { l: 3, p: 3, h: 2.7, aperture: [] }, { l: '', p: '' }]), { pavimento: 23, soffitto: 23, pareti: 69.54, perimetro: 27 });
+  assert.deepEqual(totaliStanze([]), { pavimento: 0, soffitto: 0, pareti: 0, perimetro: 0 });
+});

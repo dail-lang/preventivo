@@ -504,6 +504,56 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2n. Misure fuori dal preventivo: rilievi salvati da soli
+  {
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', seedBase());
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    const ordine = await page.$$eval('#bottomnav [data-view]', a => a.map(x => x.dataset.view).join(','));
+    check('rilievi: «Misure» in basso tra Listino e Clienti', ordine === 'lista,listino,misure,clienti,impostazioni', ordine);
+    check('rilievi: «Misure» anche nel menu in alto', (await page.$$eval('.tabs [data-view]', a => a.map(x => x.dataset.view).join(','))) === 'lista,listino,misure,clienti,impostazioni');
+    await page.locator('[data-view="misure"]:visible').first().click().catch(() => {});
+    await page.click('[data-act="mNew"]').catch(() => {});
+    await page.waitForSelector('#rl-nome').catch(() => {});
+    await page.fill('#rl-nome', 'Appartamento Rossi').catch(() => {});
+    await page.fill('[data-st="0"] [data-k="nome"]', 'Bagno').catch(() => {});
+    await page.fill('[data-st="0"] [data-k="l"]', '4').catch(() => {});
+    await page.fill('[data-st="0"] [data-k="p"]', '3,5').catch(() => {});
+    await page.fill('[data-st="0"] [data-k="h"]', '2,7').catch(() => {});
+    await page.waitForTimeout(200);
+    const ris = await page.textContent('[data-st="0"] .rl-ris').catch(() => '');
+    check('rilievi: pavimento, pareti e perimetro della stanza', ris.includes('14 mq') && ris.includes('40,5 mq') && ris.includes('15 ml'), ris);
+    await page.click('[data-act="mStanza"]').catch(() => {});
+    await page.fill('[data-st="1"] [data-k="l"]', '3').catch(() => {});
+    await page.fill('[data-st="1"] [data-k="p"]', '3').catch(() => {});
+    await page.waitForTimeout(200);
+    check('rilievi: totale di tutte le stanze', (await page.textContent('#rl-tot').catch(() => '')).includes('23 mq'));
+    check('rilievi: nessun pulsante «Salva», si salva da solo', !(await page.$('#main [data-act="mSalva"]')) && /salvat/i.test(await page.textContent('#saveState').catch(() => '') || ''));
+    await page.waitForTimeout(900);
+    await page.click('.ed-top [data-act="back"]').catch(() => {});
+    await page.waitForTimeout(500);
+    const lista = await page.textContent('#main').catch(() => '');
+    check('rilievi: in elenco con nome e metri quadri', lista.includes('Appartamento Rossi') && lista.includes('23 mq'), lista.slice(0, 200));
+    // nel preventivo: si carica un rilievo salvato e le misure restano sulla voce
+    await page.locator('[data-view="lista"]:visible').first().click().catch(() => {});
+    await page.click('[data-open="acorpo"]');
+    await page.click('[data-sez="0"] [data-voce="0"] [data-act="vMisure"]').catch(() => {});
+    await page.waitForSelector('#ms').catch(() => {});
+    await page.waitForSelector('#ms-rilievo').catch(() => {});
+    await page.selectOption('#ms-rilievo', { label: 'Appartamento Rossi' }).catch(() => {});
+    await page.waitForTimeout(200);
+    const l01 = [await page.inputValue('#ms-l-0').catch(e => 'ERR ' + e.message.split('\n')[0]), await page.inputValue('#ms-l-1').catch(() => '-')];
+    check('rilievi: caricato nel preventivo', l01[0] === '4' && l01[1] === '3', l01.join(' | ') + ' | ' + await page.$$eval('#ms-rilievo option', a => a.map(o => o.textContent).join('/')).catch(() => 'nessun select'));
+    await page.click('[data-usa="pavimento"]').catch(() => {});
+    await page.waitForTimeout(200);
+    check('rilievi: quantità dal rilievo', (await page.inputValue('[data-sez="0"] [data-voce="0"] [data-v="qta"]')) === '4*3,5+3*3');
+    await page.click('[data-sez="0"] [data-voce="0"] [data-act="vMisure"]').catch(() => {});
+    await page.waitForSelector('#ms').catch(() => {});
+    check('rilievi: riaprendo, le misure della voce ci sono ancora', (await page.inputValue('#ms-l-0').catch(() => '')) === '4' && (await page.inputValue('#ms-p-1').catch(() => '')) === '3');
+    check('rilievi: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

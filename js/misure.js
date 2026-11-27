@@ -33,3 +33,19 @@ export function espressione(stanze, tipo) {
   if (parti.length === 1) return parti[0];
   return parti.map(x => (/[+-]/.test(x) ? `(${x})` : x)).join('+');
 }
+
+/** Perimetro della stanza in metri lineari (battiscopa, zoccolini). */
+export function perimetro({ l, p } = {}) {
+  const L = val(l), P = val(p);
+  return L && P ? round2(2 * (L + P)) : 0;
+}
+/** Somma di pavimento, soffitto, pareti e perimetro di tutte le stanze. */
+export function totaliStanze(stanze) {
+  const t = { pavimento: 0, soffitto: 0, pareti: 0, perimetro: 0 };
+  for (const s of stanze || []) {
+    const a = areeStanza(s);
+    t.pavimento += a.pavimento; t.soffitto += a.soffitto; t.pareti += a.pareti; t.perimetro += perimetro(s);
+  }
+  for (const k in t) t[k] = round2(t[k]);
+  return t;
+}
