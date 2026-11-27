@@ -153,3 +153,12 @@ test('calcMargine: sull\'imponibile dopo lo sconto, solo voci con costo', () => 
   assert.equal(calcMargine({ sezioni: [{ voci: [{ um: 'mq', qta: '2', prezzo: '5', costo: 'abc' }] }] }).conCosto, false);
   assert.equal(calcMargine({ sezioni: [{ voci: [{ um: 'mq', qta: '3*2', prezzo: '5', costo: '1,5' }] }] }).costi, 9);
 });
+
+import { segnaRichiamato } from '../js/calc.js';
+test('segnaRichiamato: data della telefonata e «modificato» aggiornato (gli altri telefoni lo vedono)', () => {
+  const p = { id: 'x', stato: 'inviato', modificato: '2026-11-01T10:00:00.000Z' };
+  const q = segnaRichiamato(p, '2026-11-27', '2026-11-27T09:00:00.000Z');
+  assert.equal(q.richiamato, '2026-11-27');
+  assert.equal(q.modificato, '2026-11-27T09:00:00.000Z');
+  assert.equal(p.richiamato, undefined, 'non cambia l\'originale');
+});

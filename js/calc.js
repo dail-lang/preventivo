@@ -228,9 +228,11 @@ export function ricalcolaRate(rate, totale) {
   const tutteInPerc = out.length && out.every(r => isFinite(percDi(r)));
   const sommaPerc = round2(out.reduce((t, r) => t + (percDi(r) || 0), 0));
   if (libere.length && tutteInPerc && sommaPerc === 100) {
+    // solo i centesimi dell'arrotondamento: se una rata è stata pagata col vecchio totale la differenza resta «da incassare»
     const ultima = libere[libere.length - 1];
     const altre = out.filter(r => r !== ultima).reduce((t, r) => t + (Number(r.importo) || 0), 0);
-    ultima.importo = round2(totale - altre);
+    const giusto = round2(totale - altre);
+    if (Math.abs(giusto - ultima.importo) < 0.01 * out.length + 1e-9) ultima.importo = giusto;
   }
   return out;
 }
@@ -255,4 +257,9 @@ export function statoPagamenti(p, oggiIso) {
   const scadute = aperte.filter(r => r.scadenza && r.scadenza < oggiIso).length;
   const conData = aperte.filter(r => r.scadenza).sort((a, b) => a.scadenza.localeCompare(b.scadenza));
   return { incassato, daIncassare: round2(Math.max(0, totale - incassato)), scadute, prossima: conData[0] || aperte[0] || null };
+}
+
+/** «Richiamato»: data della telefonata e «modificato» aggiornato, così gli altri dispositivi vedono il cambiamento. */
+export function segnaRichiamato(p, oggiIso, oraIso) {
+  return { ...p, richiamato: oggiIso, modificato: oraIso };
 }

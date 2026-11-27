@@ -48,3 +48,12 @@ test('statoPagamenti: incassato, da incassare, scadute, prossima', () => {
   assert.equal(statoPagamenti({ ...p, rate: [] }, '2026-11-26').daIncassare, 1000);
   assert.equal(statoPagamenti({ ...p, rate: undefined }, '2026-11-26').prossima, null);
 });
+
+test('ricalcolaRate: una rata pagata col vecchio totale non gonfia l\'ultima', () => {
+  const r = rateDaTesto('30% acconto, 40% metà, 30% saldo', 1000);
+  r[0].pagata = '2026-11-01';
+  const n = ricalcolaRate(r, 2000);
+  assert.equal(n[0].importo, 300);
+  assert.equal(n[1].importo, 800);
+  assert.equal(n[2].importo, 600, 'il 30% di 2000, non 900');
+});

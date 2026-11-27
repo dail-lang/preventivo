@@ -13,11 +13,12 @@ export const COLLEZIONI = ['preventivi', 'listino', 'clienti', 'foto', 'misure']
 
 export async function createStore(kind, opts = {}) {
   if (kind === 'locale') return localStore();
-  return kind === 'firestore' ? firestoreStore(opts.app, opts.emulator) : memoryStore(opts.seed || {}, !!opts.deny, null, opts.lento);
+  return kind === 'firestore' ? firestoreStore(opts.app, opts.emulator) : memoryStore(opts.seed || {}, !!opts.deny, null, opts.lento, opts.errore);
 }
 
 // lento (solo prove): collezioni dove save resta «in coda» per sempre, come Firestore senza rete.
-function memoryStore(seed, deny, persist, lento) {
+// errore (solo prove): collezioni dove save fallisce.
+function memoryStore(seed, deny, persist, lento, errore) {
   const denied = { code: 'permission-denied', message: 'Missing or insufficient permissions.' };
   const data = {};
   const subs = {};
@@ -54,14 +55,16 @@ function memoryStore(seed, deny, persist, lento) {
     },
     async all(c) { return list(c); },
     async idsWhere(c, campo, valore) { return [...coll(c)].filter(([, d]) => d[campo] === valore).map(([id]) => id); },
-    async save(c, id, d) { const { id: _ignored, ...rest } = d; coll(c).set(id, structuredClone(rest)); emit(c); if (lento && lento.includes(c)) return new Promise(() => {}); if (persist) await persist.put(c, id, rest); },
+    async save(c, id, d) { if (errore && errore.includes(c)) throw new Error('Salvataggio non riuscito (prova)'); const { id: _ignored, ...rest } = d; coll(c).set(id, structuredClone(rest)); emit(c); if (lento && lento.includes(c)) return new Promise(() => {}); if (persist) await persist.put(c, id, rest); },
     async remove(c, id) { coll(c).delete(id); emit(c); if (persist) await persist.del(c, id); },
     async ids(c) { return [...coll(c).keys()]; },
     onSync(cb) { syncSubs.add(cb); cb({ online: true, pending: false }); return () => syncSubs.delete(cb); },
     async clearLocal() {},
     exportAll() { return esporta(c => list(c)); },
     hasData() { return ['preventivi', 'listino', 'clienti'].some(c => coll(c).size > 0); },
-    peek(c, id) { return coll(c).get(id); }
+    peek(c, id) { return coll(c).get(id); },
+    inMemoria(c) { return coll(c).size; },
+    async exportAllAsync() { return esporta(c => list(c)); }
   };
 }
 
@@ -108,12 +111,26 @@ async function firestoreStore(app, emulator) {
 
 /** Dati nel dispositivo (IndexedDB): usata finché Firebase non è configurato. */
 const IDB_NAME = 'nazifoski-locale';
+// Versione 2: indici per collezione e per preventivo, così le foto si leggono solo quando servono.
 function idb() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open(IDB_NAME, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('docs', { keyPath: 'path' });
-    r.onsuccess = () => res(r.result);
+    const r = indexedDB.open(IDB_NAME, 2);
+    r.onupgradeneeded = e => {
+      const s = e.oldVersion < 1 ? r.result.createObjectStore('docs', { keyPath: 'path' }) : r.transaction.objectStore('docs');
+      if (e.oldVersion < 2) {
+        s.createIndex('coll', 'coll');
+        s.createIndex('pid', 'pid');
+        if (e.oldVersion >= 1) s.openCursor().onsuccess = ev => {
+          const c = ev.target.result; if (!c) return;
+          const v = c.value;
+          if (v.coll === 'foto' && v.data && v.pid === undefined) { v.pid = v.data.preventivoId; c.update(v); }
+          c.continue();
+        };
+      }
+    };
+    r.onsuccess = () => { const db = r.result; db.onversionchange = () => db.close(); res(db); };
     r.onerror = () => rej(r.error);
+    r.onblocked = () => rej(new Error('Chiudi le altre finestre dell\'app e riaprila.'));
   });
 }
 const tx = (db, mode, fn) => new Promise((res, rej) => {
@@ -122,15 +139,52 @@ const tx = (db, mode, fn) => new Promise((res, rej) => {
 });
 export async function localStore() {
   const db = await idb();
-  const rows = await tx(db, 'readonly', s => s.getAll());
+  // Tutto in memoria tranne le foto (pesanti): quelle si leggono da IndexedDB quando servono.
+  const nomi = [...COLLEZIONI.filter(c => c !== 'foto'), 'impostazioni'];
   const seed = {};
-  for (const r of rows || []) (seed[r.coll] = seed[r.coll] || []).push({ ...r.data, id: r.id });
+  for (const c of nomi) {
+    const rows = await tx(db, 'readonly', s => s.index('coll').getAll(c));
+    seed[c] = (rows || []).map(r => ({ ...r.data, id: r.id }));
+  }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   const st = memoryStore(seed, false, {
     put: (c, id, d) => tx(db, 'readwrite', s => s.put({ path: c + '/' + id, coll: c, id, data: structuredClone(d) })),
     del: (c, id) => tx(db, 'readwrite', s => s.delete(c + '/' + id))
   });
   st.kind = 'locale';
+  const riga = r => ({ ...r.data, id: r.id });
+  const fotoDi = async pid => ((await tx(db, 'readonly', s => s.index('pid').getAll(pid))) || []).map(riga)
+    .sort((a, b) => String(a.creata).localeCompare(String(b.creata)));
+  const fotoSubs = new Set();
+  const avvisa = () => fotoSubs.forEach(async w => { const l = await fotoDi(w.valore); if (fotoSubs.has(w)) w.cb(l, { fromCache: false, pending: false }); });
+  const { save, remove, subscribeWhere, all, ids, idsWhere } = st;
+  Object.assign(st, {
+    async save(c, id, d) {
+      if (c !== 'foto') return save(c, id, d);
+      const { id: _i, ...rest } = d;
+      await tx(db, 'readwrite', s => s.put({ path: 'foto/' + id, coll: 'foto', id, pid: rest.preventivoId, data: structuredClone(rest) }));
+      avvisa();
+    },
+    async remove(c, id) {
+      if (c !== 'foto') return remove(c, id);
+      await tx(db, 'readwrite', s => s.delete('foto/' + id));
+      avvisa();
+    },
+    subscribeWhere(c, campo, valore, cb, onError) {
+      if (c !== 'foto' || campo !== 'preventivoId') return subscribeWhere(c, campo, valore, cb, onError);
+      const w = { valore, cb }; fotoSubs.add(w);
+      fotoDi(valore).then(l => { if (fotoSubs.has(w)) cb(l, { fromCache: false, pending: false }); }).catch(e => onError && onError(e));
+      return () => fotoSubs.delete(w);
+    },
+    async all(c) { return c === 'foto' ? ((await tx(db, 'readonly', s => s.index('coll').getAll('foto'))) || []).map(riga) : all(c); },
+    async ids(c) { return c === 'foto' ? ((await tx(db, 'readonly', s => s.index('coll').getAllKeys('foto'))) || []).map(k => String(k).slice(5)) : ids(c); },
+    async idsWhere(c, campo, valore) {
+      if (c !== 'foto' || campo !== 'preventivoId') return idsWhere(c, campo, valore);
+      return ((await tx(db, 'readonly', s => s.index('pid').getAllKeys(valore))) || []).map(k => String(k).slice(5));
+    },
+    /** Tutti i dati, foto comprese (trasferimento online). */
+    async exportAllAsync() { const d = st.exportAll(); d.foto = (await st.all('foto')).map(({ id, ...r }) => ({ id, ...r })); return d; }
+  });
   return st;
 }
 /** C'è un archivio «solo su questo telefono» con dati? (senza crearlo se non esiste) */
@@ -159,6 +213,15 @@ export async function importa(store, dati) {
   for (const c of COLLEZIONI) {
     const rows = Array.isArray(dati[c]) ? dati[c] : [];
     if (!rows.length) continue;
+    if (c === 'foto') {
+      // id unici: niente controllo (eviterebbe di scaricare tutte le foto); 10 alla volta per non intasare la rete
+      const valide = rows.filter(r => r && r.id);
+      for (let i = 0; i < valide.length; i += 10) {
+        await Promise.all(valide.slice(i, i + 10).map(({ id, ...rest }) => store.save('foto', id, rest)));
+      }
+      creati += valide.length;
+      continue;
+    }
     const esistenti = new Set(await store.ids(c));
     for (const r of rows) {
       if (!r || !r.id) continue;

@@ -95,3 +95,16 @@ test('rilievi delle misure: nella copia di sicurezza e nel trasferimento', async
   await importa(dst, dati);
   assert.deepEqual(await dst.ids('misure'), ['m1']);
 });
+
+test('importa: le foto non scaricano tutto per controllare gli id e vanno a gruppi', async () => {
+  const dst = await createStore('memory');
+  const chiesti = []; const ids = dst.ids.bind(dst); dst.ids = c => { chiesti.push(c); return ids(c); };
+  let inVolo = 0, max = 0; const save = dst.save.bind(dst);
+  dst.save = async (c, id, d) => { if (c !== 'foto') return save(c, id, d); inVolo++; max = Math.max(max, inVolo); await new Promise(r => setTimeout(r, 2)); await save(c, id, d); inVolo--; };
+  const foto = Array.from({ length: 25 }, (_, i) => ({ id: 'f' + i, preventivoId: 'p1', dataURL: 'x' }));
+  const r = await importa(dst, { preventivi: [{ id: 'p1', numero: 1 }], foto });
+  assert.ok(!chiesti.includes('foto'), 'niente ids(foto)');
+  assert.equal((await dst.ids('foto')).length, 25);
+  assert.ok(max <= 10, 'al massimo 10 foto alla volta, erano ' + max);
+  assert.equal(r.creati, 26);
+});

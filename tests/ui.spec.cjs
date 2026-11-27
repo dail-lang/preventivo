@@ -594,6 +594,25 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2q. Foto che non si riesce a salvare: avviso
+  {
+    const s = seedBase(); s.errore = ['foto'];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.evaluate(async () => {
+      const cv = document.createElement('canvas'); cv.width = 400; cv.height = 300; cv.getContext('2d').fillRect(0, 0, 400, 300);
+      const dt = new DataTransfer(); dt.items.add(new File([await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.9))], 'x.jpg', { type: 'image/jpeg' }));
+      const inp = document.querySelector('#foto-file'); inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForFunction(() => /non salvat/i.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    const t = await page.textContent('#toast').catch(() => '');
+    check('foto non salvata: lo dice', /1 foto non salvat/i.test(t), t);
+    check('foto non salvata: nessun errore nella pagina', errors.filter(e => !/salvataggio|permission/i.test(e)).length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

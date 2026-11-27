@@ -69,7 +69,59 @@ function serve() {
   check('copia di sicurezza: contiene preventivo, listino e impostazioni', backup && backup.preventivi.length === 1 && backup.listino.length === 1 && backup.azienda && backup.azienda.firma === true);
   check('copia di sicurezza: nome con la data', dl && /^nazifoski-dati-\d{4}-\d{2}-\d{2}\.json$/.test(dl.suggestedFilename()), dl && dl.suggestedFilename());
 
+  // foto: nel telefono, lette solo per il preventivo aperto (non tutte in memoria all'avvio)
+  const fo = await page.evaluate(async () => {
+    const m = await import('/js/store.js');
+    let st = await m.localStore();
+    await st.save('foto', 'fa', { preventivoId: 'pA', creata: '1', dataURL: 'data:image/jpeg;base64,AAAA' });
+    await st.save('foto', 'fb', { preventivoId: 'pA', creata: '2', dataURL: 'data:image/jpeg;base64,BBBB' });
+    await st.save('foto', 'fc', { preventivoId: 'pB', creata: '3', dataURL: 'data:image/jpeg;base64,CCCC' });
+    st = await m.localStore();
+    const out = { memoria: st.inMemoria ? st.inMemoria('foto') : -1 };
+    out.pA = await new Promise(res => { const u = st.subscribeWhere('foto', 'preventivoId', 'pA', l => { res(l.map(x => x.id).sort().join()); }); });
+    out.pB = (await st.idsWhere('foto', 'preventivoId', 'pB')).join();
+    out.tutte = (await st.all('foto')).length;
+    out.export = st.exportAllAsync ? (await st.exportAllAsync()).foto.length : -1;
+    const visti = [];
+    st.subscribeWhere('foto', 'preventivoId', 'pA', l => visti.push(l.length));
+    await st.remove('foto', 'fa');
+    await new Promise(r => setTimeout(r, 100));
+    out.dopo = visti.join();
+    out.dopoRiapertura = (await (await m.localStore()).idsWhere('foto', 'preventivoId', 'pA')).join();
+    return out;
+  });
+  check('foto in locale: non caricate tutte all\'avvio', fo.memoria === 0, JSON.stringify(fo));
+  check('foto in locale: si leggono quelle del preventivo aperto', fo.pA === 'fa,fb' && fo.pB === 'fc', JSON.stringify(fo));
+  check('foto in locale: copia di sicurezza e trasferimento le includono', fo.tutte === 3 && fo.export === 3, JSON.stringify(fo));
+  check('foto in locale: eliminare aggiorna subito e resta eliminata', fo.dopo.endsWith('1') && fo.dopoRiapertura === 'fb', JSON.stringify(fo));
+
   check('nessun errore', errors.length === 0, errors.join(' | '));
+
+  // dati salvati dalla versione precedente dell'app (archivio versione 1): l'aggiornamento non perde niente
+  {
+    const c2 = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' });
+    const p2 = await c2.newPage(); const err2 = []; p2.on('pageerror', e => err2.push(e.message));
+    await p2.goto(base + 'manifest.webmanifest');
+    await p2.evaluate(() => new Promise((res, rej) => {
+      const r = indexedDB.open('nazifoski-locale', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('docs', { keyPath: 'path' });
+      r.onsuccess = () => {
+        const db = r.result; const t = db.transaction('docs', 'readwrite'); const s = t.objectStore('docs');
+        s.put({ path: 'preventivi/v1', coll: 'preventivi', id: 'v1', data: { anno: 2026, numero: 41, data: '2026-11-20', stato: 'bozza', cliente: { nome: 'Cliente della versione vecchia' }, sezioni: [{ id: 's', titolo: '', voci: [{ id: 'v', desc: 'Rasatura', um: 'mq', qta: '10', prezzo: '10' }] }], iva: 10 } });
+        s.put({ path: 'foto/old1', coll: 'foto', id: 'old1', data: { preventivoId: 'v1', creata: '2026-11-20', dataURL: 'data:image/jpeg;base64,AAAA' } });
+        s.put({ path: 'impostazioni/azienda', coll: 'impostazioni', id: 'azienda', data: { ragione: 'Impresa Edile Nazifoski', firma: true } });
+        t.oncomplete = () => { db.close(); res(); }; t.onerror = () => rej(t.error);
+      };
+      r.onerror = () => rej(r.error);
+    }));
+    await p2.goto(base);
+    await p2.waitForSelector('[data-open]', { timeout: 10000 }).catch(() => {});
+    check('aggiornamento archivio: i preventivi di prima ci sono', await p2.isVisible('text=Cliente della versione vecchia'));
+    const vecchie = await p2.evaluate(async () => { const m = await import('/js/store.js'); const st = await m.localStore(); return (await st.idsWhere('foto', 'preventivoId', 'v1')).join(); }).catch(e => 'ERR ' + e.message);
+    check('aggiornamento archivio: le foto di prima si ritrovano', vecchie === 'old1', vecchie);
+    check('aggiornamento archivio: nessun errore', err2.length === 0, err2.join(' | '));
+    await c2.close();
+  }
   await browser.close(); srv.close();
   console.log(failures ? `\n${failures} controlli falliti` : '\nTutti i controlli superati');
   process.exit(failures ? 1 : 0);

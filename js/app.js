@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf, rateDaTesto, ricalcolaRate, statoPagamenti, RATE_BASE } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf, rateDaTesto, ricalcolaRate, statoPagamenti, RATE_BASE, segnaRichiamato } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -177,7 +177,7 @@ async function boot() {
     // Senza configurazione Firebase: dati «solo su questo telefono», senza accesso.
     const kind = TEST ? 'test' : app ? 'online' : 'locale';
     auth = await createAuth(kind === 'test' ? 'fake' : kind === 'online' ? 'firebase' : 'locale', { app, user: seed.user, emulator: EMU });
-    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, lento: seed.lento, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto, misure: seed.misure } });
+    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, lento: seed.lento, errore: seed.errore, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto, misure: seed.misure } });
     store.onSync(s => { S.sync = s; renderSync(); });
     auth.onUser(onUser);
   } catch (e) {
@@ -227,7 +227,7 @@ async function controllaLocale() {
 async function trasferisciLocale() {
   if (!localeDaTrasferire) return;
   try {
-    const r = await importa(store, localeDaTrasferire.exportAll());
+    const r = await importa(store, await localeDaTrasferire.exportAllAsync());
     try { localStorage.setItem('nz-locale-trasferito', '1'); } catch (e) {}
     localeDaTrasferire = null;
     renderLista(true);
@@ -272,9 +272,10 @@ function setSaveState(s) {
 function write(coll, id, data) {
   const p = data === DEL ? store.remove(coll, id) : store.save(coll, id, data);
   if (!S.sync.online) setSaveState('offline');
-  return p.then(() => setSaveState('saved')).catch(err => {
+  return p.then(() => { setSaveState('saved'); return true; }).catch(err => {
     setSaveState('err');
     toast(denied(err) ? 'Non hai il permesso di modificare questi dati.' : 'Salvataggio non riuscito. Riprova.');
+    return false;
   });
 }
 
@@ -747,9 +748,9 @@ async function onAct(b) {
   if (act === 'lNew') return editListino(null);
   if (act === 'richiamato') {
     const x = S.preventivi.find(i => i.id === b.dataset.id); if (!x) return;
-    const { id, ...data } = x;
-    x.richiamato = today();
-    write('preventivi', id, { ...data, richiamato: x.richiamato });
+    const { id, ...data } = segnaRichiamato(x, today(), new Date().toISOString());
+    x.richiamato = data.richiamato; x.modificato = data.modificato;
+    write('preventivi', id, data);
     renderLista(true);
     toast('Segnato come richiamato: te lo ricordo di nuovo tra qualche giorno');
     return;
@@ -1150,6 +1151,12 @@ function fotoHtml() {
     + (fotoCaricamento ? `<div class="ft carica" aria-live="polite">Riduco ${fotoCaricamento}…</div>` : '');
 }
 let fotoCaricamento = 0;
+// Le foto che non si riescono a salvare: un solo avviso con il conteggio (arriva dopo «Foto aggiunta»).
+let nonSalvate = 0, nonSalvateTimer = null;
+function fotoNonSalvata() {
+  nonSalvate++; clearTimeout(nonSalvateTimer);
+  nonSalvateTimer = setTimeout(() => { toast(`${nonSalvate} ${nonSalvate === 1 ? 'foto non salvata' : 'foto non salvate'}: riprova`); nonSalvate = 0; }, 400);
+}
 async function aggiungiFoto(files) {
   const p = S.current; if (!p || !files.length) return;
   const { riduciFoto } = await import('./foto.js');
@@ -1159,7 +1166,7 @@ async function aggiungiFoto(files) {
     try {
       const dataURL = await riduciFoto(file);
       // senza rete Firestore conferma solo quando torna il segnale: la foto resta in coda e si passa alla prossima
-      write('foto', uid(), { preventivoId: p.id, creata: new Date().toISOString(), dataURL });
+      write('foto', uid(), { preventivoId: p.id, creata: new Date().toISOString(), dataURL }).then(salvata => { if (!salvata) fotoNonSalvata(); });
       ok++;
     } catch (e) { console.error(e); ko++; }
   }
