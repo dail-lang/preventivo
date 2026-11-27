@@ -105,3 +105,35 @@ test('scadenzeDaCantiere: se il cantiere si sposta, si spostano le scadenze mess
   assert.equal(r2[0].scadenza, '2026-12-09', 'messa dall\'app: segue il cantiere');
   assert.equal(r2[1].scadenza, '2026-12-20', 'scritta a mano: resta');
 });
+
+test('San Francesco (4 ottobre) festa nazionale dal 2026', () => {
+  assert.ok(festivo('2027-10-04'));
+  assert.ok(!lavorativo('2027-10-04'), 'lunedì 4/10/2027');
+  assert.ok(!festivo('2025-10-04'), 'prima del 2026 no');
+});
+test('spostaLavorativi: con inizio di sabato «+1» sposta davvero di un giorno', () => {
+  assert.equal(spostaLavorativi('2026-11-28', 1), '2026-12-01');
+  assert.equal(spostaLavorativi('2026-11-28', 2), '2026-12-02');
+});
+test('scadenzeDaCantiere: le rate pagate non cambiano; senza date le scadenze automatiche si tolgono', () => {
+  const r = [{ desc: 'A fine lavori', scadenza: '2026-12-04', scadenzaAuto: true, pagata: '2026-12-04' }, { desc: 'Saldo', scadenza: '2026-12-04', scadenzaAuto: true, pagata: '' }];
+  const spostate = scadenzeDaCantiere(r, '2026-12-10', '2026-12-18');
+  assert.equal(spostate[0].scadenza, '2026-12-04', 'pagata: resta');
+  assert.equal(spostate[1].scadenza, '2026-12-18');
+  const senza = scadenzeDaCantiere(r, '', '');
+  assert.equal(senza[1].scadenza, '', 'tolte le date messe dall\'app');
+  assert.equal(senza[0].scadenza, '2026-12-04', 'la pagata resta');
+});
+test('durataDaTesto: parole intere e prima i giorni lavorativi', () => {
+  assert.equal(durataDaTesto('trentasei giorni'), '');
+  assert.equal(durataDaTesto('Inizio entro 2 settimane, durata 10 giorni lavorativi'), 10);
+  assert.equal(durataDaTesto('Circa 12 giorni'), 12);
+});
+test('daProgrammare: i lavori segnati «già fatto» non ci sono', () => {
+  const l = [{ id: 'a', stato: 'accettato' }, { id: 'b', stato: 'accettato', agenda: { nessuna: true } }];
+  assert.deepEqual(daProgrammare(l).map(p => p.id), ['a']);
+});
+test('icsCantiere: SEQUENCE, così il calendario aggiorna l\'evento se il cantiere si sposta', () => {
+  const s = icsCantiere({ id: 'x', oggetto: 'Bagno', modificato: '2026-11-27T10:00:00.000Z', agenda: { inizio: '2026-12-01', giorni: 2 } }, {});
+  assert.match(s, /SEQUENCE:\d+/);
+});

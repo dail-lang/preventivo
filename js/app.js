@@ -292,7 +292,7 @@ const main = $('#main');
 function go(view) {
   if (S.view === 'editor' && view !== 'editor') { flushEditor(); S.current = null; closeLayer('editor'); seguiFoto(null); }
   if (S.rilievo) { flushRilievo(); S.rilievo = null; closeLayer('rilievo'); }
-  if (S.view === 'agenda' && view !== 'agenda') closeLayer('agenda');
+  if ((S.view === 'agenda' || (S.view === 'editor' && S.indietro === 'agenda')) && view !== 'agenda' && view !== 'editor') closeLayer('agenda');
   const daEditor = S.view === 'editor';
   if (view !== 'editor' && !(daEditor && view === 'agenda')) S.indietro = 'lista';
   S.view = view;
@@ -770,7 +770,7 @@ main.addEventListener('input', e => {
     setPath(p, t.dataset.f, v);
     if (t.dataset.f === 'cliente.nome') fillCliente(t.value);
     if (t.dataset.f === 'stato' && v === 'inviato') { p.dataInvio = today(); delete p.richiamato; }
-    if (t.dataset.f === 'stato') { const ag = $('#agenda'); if (ag) ag.hidden = !mostraExtra(p) && !p.agenda; const ex = $('#extra'); if (ex) ex.hidden = !mostraExtra(p); const sp = $('#spese'); if (sp) sp.hidden = !mostraExtra(p) && !(p.spese || []).length; }
+    if (t.dataset.f === 'stato') { const ag = $('#agenda'); if (ag) ag.hidden = !mostraExtra(p) && !p.agenda; aggiornaAgenda(); const ex = $('#extra'); if (ex) ex.hidden = !mostraExtra(p); const sp = $('#spese'); if (sp) sp.hidden = !mostraExtra(p) && !(p.spese || []).length; }
     if (t.dataset.f === 'numero' && v !== '') { $('.ed-top h1').textContent = numStr(p); $('#dupwrap').innerHTML = dupNote(p); }
   } else if (t.dataset.v) {
     const si = +t.closest('[data-sez]').dataset.sez, vi = +t.closest('[data-voce]').dataset.voce;
@@ -783,8 +783,9 @@ main.addEventListener('input', e => {
   } else if (t.dataset.ag) {
     const a = p.agenda = p.agenda || {};
     const k = t.dataset.ag;
-    if (k === 'giorni') { const n = parseInt(t.value, 10); a.giorni = n >= 1 ? n : ''; }
+    if (k === 'giorni') { const n = parseInt(t.value, 10); a.giorni = n >= 1 ? Math.min(n, 999) : ''; }
     else a[k] = t.value;
+    if (k === 'inizio' && t.value) delete a.nessuna;
     if (k === 'inizio' && a.inizio && !a.giorni) {
       const d = durataDaTesto(p.tempi);
       if (d) { a.giorni = d; const g = $('#agenda [data-ag="giorni"]'); if (g) g.value = d; }
@@ -909,7 +910,7 @@ async function onAct(b) {
       const nuove = rateDaTesto(testo, calc(p).totale);
       if (!nuove.length) { toast('Nelle Impostazioni scrivi le rate con le percentuali, es. 30% acconto, 70% saldo'); break; }
       if ((p.rate || []).length && !(await confirmBox('Sostituire le rate?', 'Le rate scritte finora vengono sostituite da quelle standard.', 'Sostituisci'))) break;
-      p.rate = nuove; ridisegnaPagamenti(); markDirty(); break;
+      p.rate = nuove; aggiornaAgenda(); ridisegnaPagamenti(); markDirty(); break;
     }
     case 'rAdd': {
       const st = statoPagamenti(p, today());
@@ -1423,10 +1424,15 @@ function agendaBanner() {
   const indietro = S.noteAgenda.filter(n => !n.fatto && n.data && n.data <= oggi).length;
   const parti = [];
   if (corso) parti.push(`<b>${corso} ${corso === 1 ? 'cantiere in corso' : 'cantieri in corso'}</b>`);
-  if (presto.length) parti.push(`${presto.length === 1 ? '1 inizia' : presto.length + ' iniziano'} ${presto[0].inizio === oggi ? 'oggi' : giornoSett(presto[0].inizio)}`);
+  if (presto.length) parti.push(`${presto.length === 1 ? '1 inizia' : presto.length + ' iniziano'} ${ggmm(presto[0].inizio)}`);
   if (prog) parti.push(`${prog} da programmare`);
   if (indietro) parti.push(`${indietro} ${indietro === 1 ? 'nota da fare' : 'note da fare'}`);
-  if (!parti.length) return '';
+  if (!parti.length) {
+    const prossimo = cs.filter(c => c.inizio > oggi).sort((a, b) => a.inizio.localeCompare(b.inizio))[0];
+    if (prossimo) parti.push(`prossimo inizio ${ggmm(prossimo.inizio)}`);
+    else if (S.noteAgenda.length || S.preventivi.some(p => !p.esempio && (p.stato === 'accettato' || p.firma))) parti.push('cantieri e note dei giorni');
+    else return '';
+  }
   return `<button class="note ag-banner" id="agenda-banner" type="button" data-act="agenda">${IC.calendario}<span><b>Agenda</b> · ${parti.join(' · ')}</span><span class="vedi">Apri</span></button>`;
 }
 function cantiereHtml(c, oggi) {
@@ -1453,6 +1459,7 @@ function renderAgenda() {
   const pros = agendaSettimana(S.preventivi, [], piuGiorni(lun, 7), oggi);
   const indietro = S.noteAgenda.filter(n => !n.fatto && n.data && n.data < oggi).sort((a, b) => a.data.localeCompare(b.data));
   const prog = daProgrammare(S.preventivi);
+  const avanti = cantieri(S.preventivi).filter(c => c.inizio > piuGiorni(lun, 13)).sort((a, b) => a.inizio.localeCompare(b.inizio)).slice(0, 10);
   const mese = (x, conMese) => `${+x.slice(8, 10)}${conMese ? ' ' + MESI[+x.slice(5, 7) - 1] : ''}`;
   const titolo = `Settimana dal ${mese(lun, lun.slice(5, 7) !== dom.slice(5, 7))} al ${mese(dom, true)}`;
   const vuoto = t => `<p class="help" style="margin:0;color:var(--stone)">${t}</p>`;
@@ -1473,7 +1480,8 @@ function renderAgenda() {
       <button class="btn" type="button" data-act="agNota" style="margin-top:10px">${IC.plus} Aggiungi nota</button>
     </section>
     ${pros.corso.length ? `<section class="card ag-card"><h2>Settimana dopo</h2>${pros.corso.map(c => `<button class="ag-riga" type="button" data-open="${esc(c.p.id)}"><b>${c.inizio > piuGiorni(lun, 6) ? 'inizia ' + ggmm(c.inizio) : 'continua'}</b> ${esc(c.p.cliente?.nome || '')} – ${esc(c.p.oggetto || '')}${c.fine <= piuGiorni(lun, 13) ? ' · finisce ' + ggmm(c.fine) : ''}</button>`).join('')}</section>` : ''}
-    ${prog.length ? `<section class="card ag-card" id="ag-programma"><h2>Da programmare <small>lavori accettati senza data</small></h2>${prog.map(p => `<button class="ag-riga" type="button" data-open="${esc(p.id)}" data-agenda-data="1"><b>${esc(p.cliente?.nome || 'Cliente')}</b> – ${esc(p.oggetto || 'lavori')}<span class="vedi">Metti la data</span></button>`).join('')}</section>` : ''}`;
+    ${avanti.length ? `<section class="card ag-card" id="ag-avanti"><h2>Più avanti</h2>${avanti.map(c => `<button class="ag-riga" type="button" data-open="${esc(c.p.id)}"><b>${ggmm(c.inizio)}</b> ${esc(c.p.cliente?.nome || '')} – ${esc(c.p.oggetto || '')} · ${c.giorni} giorni</button>`).join('')}</section>` : ''}
+    ${prog.length ? `<section class="card ag-card" id="ag-programma"><h2>Da programmare <small>lavori accettati senza data</small></h2>${prog.map(p => `<div class="ag-prog"><button class="ag-riga" type="button" data-open="${esc(p.id)}" data-agenda-data="1"><b>${esc(p.cliente?.nome || 'Cliente')}</b> – ${esc(p.oggetto || 'lavori')}<span class="vedi">Metti la data</span></button><button class="btn" type="button" data-act="agNoAgenda" data-id="${esc(p.id)}" title="Lavoro già fatto o da non mettere in agenda">Già fatto</button></div>`).join('')}</section>` : ''}`;
   enter();
 }
 function notaSheet(n) {
@@ -1497,11 +1505,19 @@ function notaSheet(n) {
   if (del) del.onclick = () => { write('noteAgenda', n.id, DEL); closeModal(true); if (S.view === 'agenda') renderAgenda(); toast('Nota eliminata'); };
 }
 async function onActAgenda(act, b) {
+  if (act === 'back') { go('lista'); return true; }
   if (act === 'agPrec' || act === 'agSucc') { S.settimana = piuGiorni(S.settimana || lunediDi(today()), act === 'agPrec' ? -7 : 7); renderAgenda(); return true; }
   if (act === 'agOggi') { S.settimana = lunediDi(today()); renderAgenda(); return true; }
   if (act === 'agNota') { notaSheet(null); return true; }
   const nEl = b.closest('[data-nota]'); const n = nEl && S.noteAgenda.find(x => x.id === nEl.dataset.nota);
   if (act === 'notaEdit' && n) { notaSheet(n); return true; }
+  if (act === 'agNoAgenda') {
+    const p = S.preventivi.find(x => x.id === b.dataset.id); if (!p) return true;
+    const { id, ...r } = p;
+    write('preventivi', id, { ...r, agenda: { ...(p.agenda || {}), nessuna: true }, modificato: new Date().toISOString() });
+    toast('Tolto da «Da programmare»: se serve, metti la data nel preventivo');
+    return true;
+  }
   if (act === 'notaFatto' && n) { const { id, ...r } = n; write('noteAgenda', id, { ...r, fatto: !n.fatto }); return true; }
   return false;
 }
@@ -1513,8 +1529,9 @@ function agFineHtml(p) {
   const a = p.agenda || {};
   const fine = fineLavori(a.inizio, a.giorni);
   if (!fine) return 'Metti la data di inizio e i giorni lavorativi: la fine si calcola da sola (sabato, domenica e festivi esclusi).';
+  const fuori = p.stato !== 'accettato' && !p.firma ? ' <span class="ag-fuori">Non compare in agenda finché il preventivo non è «Accettato».</span>' : '';
   const parte = lavorativo(a.inizio) ? '' : ` · si parte ${giornoSett(spostaLavorativi(a.inizio, 0))} ${fmtDate(spostaLavorativi(a.inizio, 0))}`;
-  return `Fine prevista: <b>${giornoSett(fine)} ${fmtDate(fine)}</b> · ${a.giorni} ${Number(a.giorni) === 1 ? 'giorno lavorativo' : 'giorni lavorativi'}${parte}`;
+  return `Fine prevista: <b>${giornoSett(fine)} ${fmtDate(fine)}</b> · ${a.giorni} ${Number(a.giorni) === 1 ? 'giorno lavorativo' : 'giorni lavorativi'}${parte}${fuori}`;
 }
 function aggiornaAgenda() {
   const p = S.current; if (!p) return;

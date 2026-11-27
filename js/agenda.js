@@ -21,6 +21,7 @@ const FISSI = ['01-01', '01-06', '04-25', '05-01', '06-02', '08-15', '10-14', '1
 export function festivo(s) {
   if (!valido(s)) return false;
   if (FISSI.includes(s.slice(5))) return true;
+  if (s.slice(5) === '10-04' && +s.slice(0, 4) >= 2026) return true; // San Francesco, festa nazionale dal 2026 (legge 151/2025)
   return s === piu(pasqua(+s.slice(0, 4)), 1);
 }
 export function lavorativo(s) {
@@ -42,7 +43,7 @@ export function fineLavori(inizio, giorni) {
 /** Sposta di n giorni lavorativi (anche indietro); il risultato è sempre un giorno lavorativo. */
 export function spostaLavorativi(s, n) {
   if (!valido(s)) return s;
-  let d = s, passi = Math.abs(Number(n) || 0);
+  let d = Number(n) > 0 ? primoLavorativo(s) : s, passi = Math.abs(Number(n) || 0); // da sabato, «+1» parte dal lunedì effettivo
   const dir = Number(n) < 0 ? -1 : 1;
   while (passi > 0) { d = piu(d, dir); if (lavorativo(d)) passi--; }
   if (!lavorativo(d)) d = dir < 0 ? (() => { let x = d; while (!lavorativo(x)) x = piu(x, -1); return x; })() : primoLavorativo(d);
@@ -60,11 +61,13 @@ export function giornoLavoro(oggi, inizio, giorni) {
   return n;
 }
 
+const NUMERI = 'un|uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|quindici|venti|trenta';
 const PAROLE = { un: 1, uno: 1, una: 1, due: 2, tre: 3, quattro: 4, cinque: 5, sei: 6, sette: 7, otto: 8, nove: 9, dieci: 10, quindici: 15, venti: 20, trenta: 30 };
 /** Durata in giorni lavorativi letta dai «Tempi di esecuzione»: «15 giorni» → 15, «4 settimane» → 20, «un mese» → 20. */
 export function durataDaTesto(testo) {
   const s = String(testo || '').toLowerCase();
-  const m = s.match(/(\d+|un|uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|quindici|venti|trenta)\s*(giorn|gg|settiman|mes)/);
+  // prima un numero vicino a «lavorativi», poi il primo numero con giorni/settimane/mesi (parole intere)
+  const m = s.match(new RegExp(`(?:^|[^a-zà-ù0-9])(\\d+|${NUMERI})\\s*(giorn)i?\\s+lavorativ`)) || s.match(new RegExp(`(?:^|[^a-zà-ù0-9])(\\d+|${NUMERI})\\s*(giorn|gg|settiman|mes)`));
   if (!m) return '';
   const n = /^\d+$/.test(m[1]) ? Number(m[1]) : PAROLE[m[1]];
   return m[2] === 'settiman' ? n * 5 : m[2] === 'mes' ? n * 20 : n;
@@ -80,7 +83,7 @@ export function cantieri(preventivi) {
 }
 /** Lavori accettati ancora senza data. */
 export function daProgrammare(preventivi) {
-  return (preventivi || []).filter(p => inAgenda(p) && !(p.agenda && valido(p.agenda.inizio)));
+  return (preventivi || []).filter(p => inAgenda(p) && !(p.agenda && (valido(p.agenda.inizio) || p.agenda.nessuna)));
 }
 /** La settimana da lunedì a domenica: cantieri in corso, quelli che iniziano, quelli che finiscono (con la rata da incassare), note. */
 export function agendaSettimana(preventivi, note, lunedi, oggi) {
@@ -97,11 +100,12 @@ export function agendaSettimana(preventivi, note, lunedi, oggi) {
 
 /** Le rate senza scadenza prendono la data dal cantiere: acconto/inizio → inizio, metà → metà lavori, fine/saldo → fine. */
 export function scadenzeDaCantiere(rate, inizio, fine) {
-  if (!valido(inizio) || !valido(fine)) return (rate || []).map(r => ({ ...r }));
+  // senza date: si tolgono le scadenze messe dall'app (non quelle delle rate pagate)
+  if (!valido(inizio) || !valido(fine)) return (rate || []).map(r => (r.scadenzaAuto && !r.pagata ? (({ scadenzaAuto, ...x }) => ({ ...x, scadenza: '' }))(r) : { ...r }));
   let tot = 0; for (let d = primoLavorativo(inizio); d <= fine; d = piu(d, 1)) if (lavorativo(d)) tot++;
   const meta = fineLavori(inizio, Math.ceil(tot / 2));
   return (rate || []).map(r => {
-    if (r.scadenza && !r.scadenzaAuto) return { ...r }; // scritta a mano: non si tocca
+    if ((r.scadenza && !r.scadenzaAuto) || r.pagata) return { ...r }; // scritta a mano o già pagata: non si tocca
     const d = r.desc || '';
     const s = /met[aà]/i.test(d) ? meta : /fine|saldo/i.test(d) ? fine : /accettaz|inizio|acconto/i.test(d) ? primoLavorativo(inizio) : '';
     if (!s) return { ...r };
@@ -120,7 +124,7 @@ export function icsCantiere(p, azienda = {}) {
   const desc = [a.chi && 'Chi ci lavora: ' + a.chi, a.note, azienda.ragione].filter(Boolean).join('\n');
   const ora = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Nazifoski//Preventivi//IT', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
-    `UID:cantiere-${p.id}@nazifoski`, `DTSTAMP:${ora}`, `DTSTART;VALUE=DATE:${c(ini)}`, `DTEND;VALUE=DATE:${c(piu(fine, 1))}`,
+    `UID:cantiere-${p.id}@nazifoski`, `SEQUENCE:${Math.max(0, Math.floor((Date.parse(p.modificato || '') || Date.now()) / 1000) - 1700000000)}`, `DTSTAMP:${ora}`, `DTSTART;VALUE=DATE:${c(ini)}`, `DTEND;VALUE=DATE:${c(piu(fine, 1))}`,
     `SUMMARY:${icsTesto(`Cantiere: ${p.oggetto || 'lavori'}${cliente ? ' – ' + cliente : ''}`)}`,
     ...(luogo ? [`LOCATION:${icsTesto(luogo)}`] : []), ...(desc ? [`DESCRIPTION:${icsTesto(desc)}`] : []),
     'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n');

@@ -874,7 +874,8 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   // 2za. Pagina Agenda e note dei giorni
   {
     const ag = await import('../js/agenda.js');
-    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const pad2 = n => String(n).padStart(2, '0');
+    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`; };
     const oggi = d(0);
     const s = seedBase();
     s.preventivi = [
@@ -918,7 +919,57 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await page.click('.ed-top [data-act="back"]').catch(() => {});
     await page.waitForTimeout(500);
     check('agenda: dal preventivo si torna all\'agenda', /Settimana dal/.test(await page.textContent('.ed-top h1').catch(() => '')));
+    // «indietro» in alto nella pagina Agenda
+    await page.click('.ed-top [data-act="back"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('agenda: il pulsante indietro della pagina torna ai Preventivi', /Preventivi/.test(await page.textContent('#main h1').catch(() => '')) && !!(await page.$('#agenda-banner')));
+    // dall'agenda al preventivo, poi al logo: «Indietro» di Android non deve restare bloccato
+    await page.click('#agenda-banner');
+    await page.waitForTimeout(300);
+    await page.click('[data-open="incorso"]').catch(() => {});
+    await page.waitForTimeout(300);
+    await page.click('#brand').catch(() => {});
+    await page.waitForTimeout(500);
+    await page.goBack().catch(() => {});
+    await page.waitForTimeout(500);
+    check('agenda: dopo il logo, «Indietro» esce dall\'app (nessuna pagina fantasma)', !page.url().startsWith('https://app.test/'), page.url());
     check('agenda: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  // 2zb. Agenda sempre raggiungibile, «Più avanti», «Già fatto», rate dopo le date, avviso se non accettato
+  {
+    const ag = await import('../js/agenda.js');
+    const pad = n => String(n).padStart(2, '0');
+    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`; };
+    const s = seedBase();
+    s.impostazioni = [{ ...s.impostazioni[0], rateStandard: '30% acconto, 70% a fine lavori' }];
+    s.preventivi = [
+      { ...fx.acorpo, id: 'lontano', numero: 61, stato: 'accettato', cliente: { nome: 'Verdi Anna' }, oggetto: 'Facciata', agenda: { inizio: ag.spostaLavorativi(d(0), 15), giorni: 5 } },
+      { ...fx.acorpo, id: 'vecchio', numero: 62, stato: 'accettato', cliente: { nome: 'Lavoro vecchio' }, oggetto: 'Tinteggiatura 2024' }
+    ];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('#agenda-banner').catch(() => {});
+    await page.waitForTimeout(300);
+    check('agenda: «Più avanti» mostra il cantiere fra 3 settimane', (await page.textContent('#ag-avanti').catch(() => '')).includes('Verdi Anna'));
+    await page.click('#ag-programma [data-act="agNoAgenda"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('agenda: «Già fatto» toglie il lavoro vecchio da programmare', !(await page.textContent('#main').catch(() => '')).includes('Lavoro vecchio'));
+    await page.click('.ed-top [data-act="back"]').catch(() => {});
+    await page.waitForTimeout(400);
+    const ban = await page.textContent('#agenda-banner').catch(() => '');
+    check('agenda: riquadro presente anche se il prossimo cantiere è lontano', /prossimo inizio/i.test(ban), ban);
+    await page.click('[data-open="lontano"]');
+    await page.click('#pagamenti [data-act="rStandard"]').catch(() => {});
+    await page.waitForTimeout(300);
+    const fine = ag.fineLavori(ag.spostaLavorativi(d(0), 15), 5);
+    check('agenda: rate standard create dopo le date prendono la scadenza', (await page.inputValue('#pagamenti [data-rata="1"] [data-r="scadenza"]').catch(() => '')) === fine);
+    await page.selectOption('#f-stato', 'bozza').catch(() => {});
+    await page.waitForTimeout(200);
+    check('agenda: se non è accettato lo dice', /non compare in agenda/i.test(await page.textContent('#agenda').catch(() => '')));
+    check('agenda (2): nessun errore', errors.length === 0, errors.join(' | '));
     await ctx.close();
   }
 
