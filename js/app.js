@@ -53,6 +53,7 @@ const IC = {
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>',
   doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></svg>',
   metro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>',
+  firma: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17c3-4 5-9 7-9 2.5 0-1 9 1.5 9 1.8 0 2.5-3 4-3 1.2 0 1 2 2.5 2H21"/><path d="M3 21h18"/></svg>',
   camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
   tel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
@@ -705,7 +706,18 @@ main.addEventListener('focusin', e => {
   e.target.blur();
   revisionePerModificare();
 });
+function salvaFirmaImpresa(url) {
+  if (url) S.azienda.firmaImpresa = url; else delete S.azienda.firmaImpresa;
+  write('impostazioni', 'azienda', { ...S.azienda });
+  const y = window.scrollY; renderImpostazioni(); window.scrollTo(0, y);
+  toast(url ? 'Firma dell\'impresa salvata: comparirà nei PDF' : 'Firma dell\'impresa tolta');
+}
 main.addEventListener('change', e => {
+  if (e.target.id === 'fi-file') {
+    const file = e.target.files && e.target.files[0]; e.target.value = '';
+    if (file) import('./foto.js').then(m => m.riduciFoto(file, 800, 0.85)).then(salvaFirmaImpresa).catch(() => toast('Non riesco a leggere questa foto'));
+    return;
+  }
   if (e.target.id === 'foto-file') { const files = [...(e.target.files || [])]; e.target.value = ''; aggiungiFoto(files); }
 });
 main.addEventListener('input', e => {
@@ -746,6 +758,18 @@ async function onAct(b) {
   if (S.view === 'editor' && p && p.firma && ATTI_CONTENUTO.includes(act)) { revisionePerModificare(); return; }
   if (act === 'new') { const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
   if (act === 'lNew') return editListino(null);
+  if (act === 'fiDisegna') {
+    const { apriFirma, chiudiFirma } = await import('./firma.js');
+    openLayer('firma', () => chiudiFirma());
+    const f = await apriFirma({ titolo: 'Firma dell\'impresa', nota: 'Firma come sui documenti: comparirà nei PDF sotto «Per l\'impresa».', chiediNome: false });
+    closeLayer('firma');
+    if (f) salvaFirmaImpresa(f.png);
+    return;
+  }
+  if (act === 'fiTogli') {
+    if (await confirmBox('Togliere firma e timbro?', 'Dai prossimi PDF spariscono. Puoi rimetterli quando vuoi.', 'Togli')) salvaFirmaImpresa('');
+    return;
+  }
   if (act === 'richiamato') {
     const x = S.preventivi.find(i => i.id === b.dataset.id); if (!x) return;
     const { id, ...data } = segnaRichiamato(x, today(), new Date().toISOString());
@@ -1458,6 +1482,17 @@ function renderImpostazioni() {
           <div style="grid-column:1/-1">${t('messaggio', 'Messaggio per WhatsApp', MESSAGGIO_BASE)}<p class="help" style="margin:6px 0 0">Si compila da solo: {nome} cliente, {numero} preventivo, {oggetto}, {totale}, {impresa}, {telefono}. Se lo lasci vuoto si usa quello di esempio.</p></div>
         </div>
         <label class="check" style="margin-top:8px"><input type="checkbox" id="s-firma" data-set="firma"${a.firma ? ' checked' : ''}> Aggiungi in fondo al PDF gli spazi per le firme</label>
+      </section>
+      <section class="card" id="firma-impresa">
+        <h2>Firma e timbro dell'impresa</h2>
+        <p class="help">Compaiono nel PDF sotto «Per l'impresa» quando ci sono gli spazi per le firme (o quando il cliente firma).</p>
+        ${a.firmaImpresa ? `<div class="fi-prev"><img id="fi-anteprima" src="${esc(a.firmaImpresa)}" alt="Firma e timbro dell'impresa"></div>` : ''}
+        <div class="pg-act">
+          <button class="btn" type="button" data-act="fiDisegna">${IC.firma || ''} Disegna la firma</button>
+          <label class="btn" for="fi-file">${IC.camera} Foto del timbro firmato</label>
+          ${a.firmaImpresa ? `<button class="btn danger" type="button" data-act="fiTogli">Togli</button>` : ''}
+        </div>
+        <input type="file" id="fi-file" accept="image/*" hidden>
       </section>
       <section class="card">
         <h2>App sul telefono</h2>

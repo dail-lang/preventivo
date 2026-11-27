@@ -88,3 +88,13 @@ test('revisione di un preventivo firmato: la versione firmata conserva la firma,
   assert.equal(r.firma, undefined, 'la firma non torna sulla versione attuale');
   assert.equal(r.stato, 'bozza');
 });
+
+test('PDF: firma e timbro dell\'impresa nello spazio «Per l\'impresa», solo quando ci sono le firme', () => {
+  const img = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+  const p = { ...base(), firma: undefined };
+  const con = JSON.stringify(buildDoc(p, { ragione: 'X', firma: true, firmaImpresa: img }, null));
+  assert.ok(con.includes(img), 'immagine nel PDF');
+  assert.ok(con.indexOf(img) < con.indexOf('PER ACCETTAZIONE'), 'sta nella colonna dell\'impresa');
+  const senza = JSON.stringify(buildDoc(p, { ragione: 'X', firma: false, firmaImpresa: img }, null));
+  assert.ok(!senza.includes(img), 'niente firme, niente timbro');
+});

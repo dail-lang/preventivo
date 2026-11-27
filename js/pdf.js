@@ -311,7 +311,10 @@ export function buildDoc(p, a, logoB64) {
     const cliente = fc
       ? { width: '*', stack: [label('Per accettazione'), { text: `Firmato da ${fc.nome || 'il cliente'} il ${fmtDate(fc.data)}`, fontSize: 8.4, color: C.soft }, { image: fc.png, fit: [170, 46], margin: [0, 2, 0, 0] }, rule(C.ink, 0.6, 0, [0, 0, 0, 0])] }
       : sig('Per accettazione', 'Il cliente (data e firma)');
-    content.push({ unbreakable: true, margin: [0, 18, 0, 0], columns: [sig('Per l\'impresa', a.ragione || ''), cliente], columnGap: 40 });
+    const impresa = a.firmaImpresa
+      ? { width: '*', stack: [label('Per l\'impresa'), { text: a.ragione || '', fontSize: 8.4, color: C.soft }, { image: a.firmaImpresa, fit: [170, 56], margin: [0, 2, 0, 0] }, rule(C.ink, 0.6, 0, [0, 0, 0, 0])] }
+      : sig('Per l\'impresa', a.ragione || '');
+    content.push({ unbreakable: true, margin: [0, 18, 0, 0], columns: [impresa, cliente], columnGap: 40 });
   }
 
   const footerText = [a.ragione, a.indirizzo, a.piva && 'P.IVA ' + a.piva, a.telefono].filter(Boolean).join('  ·  ');

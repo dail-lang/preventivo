@@ -23,17 +23,17 @@ function esporta(cv, box) {
   return null;
 }
 
-export function apriFirma({ nome = '' } = {}) {
+export function apriFirma({ nome = '', titolo = 'Firma del cliente', nota = 'Confermando, il preventivo diventa «Accettato» e la firma compare nel PDF.', chiediNome = true } = {}) {
   if (chiudi) chiudi(null);
   return new Promise(resolve => {
     const ov = document.createElement('div');
     ov.className = 'firma-ov'; ov.id = 'firma';
     ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-labelledby', 'fi-t');
-    ov.innerHTML = `<div class="fi-h"><h2 id="fi-t">Firma del cliente</h2><button class="btn ghost" type="button" id="fi-no">Annulla</button></div>
+    ov.innerHTML = `<div class="fi-h"><h2 id="fi-t">${esc(titolo)}</h2><button class="btn ghost" type="button" id="fi-no">Annulla</button></div>
       <div class="fi-b">
-        <div class="fi-padw"><canvas id="fi-pad" aria-label="Riquadro per la firma"></canvas><span class="fi-hint">Firmi qui con il dito</span><span class="fi-line"></span></div>
-        <label class="field"><span>Nome di chi firma</span><input class="in" id="fi-nome" autocomplete="off" autocapitalize="words" value="${esc(nome)}"></label>
-        <p class="fi-note">Confermando, il preventivo diventa «Accettato» e la firma compare nel PDF.</p>
+        <div class="fi-padw"><canvas id="fi-pad" aria-label="Riquadro per la firma"></canvas><span class="fi-hint">Firma qui con il dito</span><span class="fi-line"></span></div>
+        ${chiediNome ? `<label class="field"><span>Nome di chi firma</span><input class="in" id="fi-nome" autocomplete="off" autocapitalize="words" value="${esc(nome)}"></label>` : ''}
+        <p class="fi-note">${esc(nota)}</p>
       </div>
       <div class="fi-f"><button class="btn" type="button" id="fi-clear">Cancella</button><button class="btn primary" type="button" id="fi-ok" disabled>Conferma</button></div>`;
     document.body.appendChild(ov);
@@ -72,7 +72,8 @@ export function apriFirma({ nome = '' } = {}) {
       if (!box) return;
       const png = esporta(cv, box);
       if (!png) return;
-      finisci({ png, nome: ov.querySelector('#fi-nome').value.trim(), data: today() });
+      const n = ov.querySelector('#fi-nome');
+      finisci({ png, nome: n ? n.value.trim() : '', data: today() });
     };
     requestAnimationFrame(dimensiona);
     window.addEventListener('resize', dimensiona);

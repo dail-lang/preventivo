@@ -613,6 +613,37 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2r. Firma e timbro dell'impresa (Impostazioni)
+  {
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', seedBase());
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.locator('[data-view="impostazioni"]:visible').first().click();
+    await page.click('[data-act="fiDisegna"]').catch(() => {});
+    await page.waitForSelector('#fi-pad', { timeout: 3000 }).catch(() => {});
+    check('firma impresa: il riquadro dice «Firma dell\'impresa»', /impresa/i.test(await page.textContent('#fi-t').catch(() => '')));
+    const bx = await page.$eval('#fi-pad', e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }).catch(() => null);
+    if (bx) { await page.mouse.move(bx.x + 30, bx.y + bx.h / 2); await page.mouse.down(); for (let i = 1; i < 15; i++) await page.mouse.move(bx.x + 30 + i * 15, bx.y + bx.h / 2 + (i % 2 ? 20 : -20)); await page.mouse.up(); }
+    await page.click('#fi-ok').catch(() => {});
+    await page.waitForTimeout(500);
+    check('firma impresa: anteprima nelle impostazioni', /^data:image\//.test(await page.getAttribute('#fi-anteprima', 'src').catch(() => '') || ''));
+    await page.click('[data-act="fiTogli"]').catch(() => {});
+    await page.click('#modal [data-close="ok"]').catch(() => {});
+    await page.waitForTimeout(300);
+    check('firma impresa: «Togli» la toglie', !(await page.$('#fi-anteprima')));
+    // foto del timbro
+    await page.evaluate(async () => {
+      const cv = document.createElement('canvas'); cv.width = 1200; cv.height = 600; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 1200, 600); g.strokeStyle = '#1a3a8a'; g.lineWidth = 12; g.strokeRect(100, 100, 1000, 400);
+      const dt = new DataTransfer(); dt.items.add(new File([await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.9))], 'timbro.jpg', { type: 'image/jpeg' }));
+      const inp = document.querySelector('#fi-file'); if (!inp) return; inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForSelector('#fi-anteprima', { timeout: 5000 }).catch(() => {});
+    const w = await page.$eval('#fi-anteprima', i => i.naturalWidth).catch(() => 0);
+    check('firma impresa: foto del timbro ridotta (≤ 800 px)', w > 0 && w <= 800, String(w));
+    check('firma impresa: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();
