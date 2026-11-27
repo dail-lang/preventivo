@@ -177,7 +177,7 @@ async function boot() {
     // Senza configurazione Firebase: dati «solo su questo telefono», senza accesso.
     const kind = TEST ? 'test' : app ? 'online' : 'locale';
     auth = await createAuth(kind === 'test' ? 'fake' : kind === 'online' ? 'firebase' : 'locale', { app, user: seed.user, emulator: EMU });
-    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, lento: seed.lento, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto } });
+    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, lento: seed.lento, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto, misure: seed.misure } });
     store.onSync(s => { S.sync = s; renderSync(); });
     auth.onUser(onUser);
   } catch (e) {
@@ -886,8 +886,9 @@ document.addEventListener('click', e => {
 const modal = $('#modal');
 let modalClose = null;
 function openModal(html, onClose) {
+  const giaAperta = !modal.hidden;
   modal.innerHTML = html; modal.hidden = false; modalClose = onClose || null;
-  openLayer('modal', () => closeModal(false, true));
+  if (!giaAperta) openLayer('modal', () => closeModal(false, true));
   const f = $('[autofocus]', modal); if (f && matchMedia('(hover: hover)').matches) f.focus();
 }
 function closeModal(val, fromBack) {

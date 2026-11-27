@@ -554,6 +554,46 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2o. Telefono piccolo (iPhone SE): campi leggibili e comodi da toccare
+  {
+    const s = seedBase();
+    const ap = JSON.parse(JSON.stringify(fx.appartamento));
+    ap.rate = [{ id: 'r1', desc: 'Acconto', perc: 30, importo: 100, scadenza: '', pagata: '2026-10-18' }];
+    s.preventivi = [ap];
+    const { page, ctx, errors } = await open(browser, 'iPhone SE', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click(`[data-open="${ap.id}"]`);
+    const q = await page.$eval('[data-sez="0"] [data-voce="0"] [data-v="qta"]', e => Math.round(e.getBoundingClientRect().width));
+    check('telefono piccolo: la quantità si legge (≥ 70 px)', q >= 70, q + ' px');
+    const k = await page.$eval('[data-sez="0"] [data-voce="0"] [data-v="costo"]', e => Math.round(e.getBoundingClientRect().height));
+    check('telefono piccolo: «Costo tuo» comodo da toccare (≥ 44 px)', k >= 44, k + ' px');
+    const d = await page.$eval('#pagamenti [data-rata="0"] [data-r="pagata"]', e => Math.round(e.getBoundingClientRect().width));
+    check('telefono piccolo: la data «Pagata il» non è tagliata (≥ 130 px)', d >= 130, d + ' px');
+    check('telefono piccolo: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
+  // 2p. Indietro dopo una conferma aperta da una finestra: basta una pressione
+  {
+    const s = seedBase();
+    s.preventivi = [{ ...fx.acorpo, rev: 2, revisioni: [{ n: 1, data: '2026-02-12', totale: 4700.3, contenuto: { sezioni: fx.acorpo.sezioni } }] }];
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', s);
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('[data-act="revisioni"]');
+    await page.click('#rv [data-act="rvRipristina"]');
+    await page.click('#modal [data-close="no"]');
+    await page.waitForTimeout(300);
+    await page.goBack().catch(() => {});
+    await page.waitForTimeout(700);
+    check('indietro: dopo «Annulla» una sola pressione torna all\'elenco', !!(await page.$('#main [data-open]')) && !(await page.$('.ed-top')));
+    check('indietro: l\'app resta aperta', page.url().startsWith('https://app.test/'));
+    check('indietro: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();
