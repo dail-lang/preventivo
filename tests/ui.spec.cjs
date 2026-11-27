@@ -644,6 +644,50 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2s. Modelli di preventivo
+  {
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', seedBase());
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('[data-open="acorpo"]');
+    await page.click('[data-act="modello"]').catch(() => {});
+    await page.fill('#md-nome', 'Bagno completo').catch(() => {});
+    await page.click('#md-form [type="submit"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('modelli: salvato', /modello/i.test(await page.textContent('#toast').catch(() => '')));
+    await page.click('.ed-top [data-act="back"]');
+    await page.waitForTimeout(500);
+    await page.click('.head [data-act="new"]');
+    await page.waitForSelector('#nm', { timeout: 3000 }).catch(() => {});
+    check('modelli: «Nuovo preventivo» propone il modello', (await page.textContent('#nm').catch(() => '')).includes('Bagno completo'));
+    await page.click('#nm [data-modello]').catch(() => {});
+    await page.waitForTimeout(500);
+    const h1 = await page.textContent('.ed-top h1').catch(() => '');
+    const desc = await page.inputValue('[data-sez="0"] [data-voce="0"] [data-v="desc"]').catch(() => '');
+    check('modelli: nuovo preventivo con le voci del modello, numero nuovo, cliente vuoto', h1.includes('2026/008') && desc.startsWith('Ristrutturazione bagno') && (await page.inputValue('#f-cnome')) === '', h1 + ' | ' + desc.slice(0, 30));
+    await page.click('.ed-top [data-act="back"]');
+    await page.waitForTimeout(500);
+    await page.click('.head [data-act="new"]');
+    await page.waitForSelector('#nm').catch(() => {});
+    await page.click('#nm [data-act="nmVuoto"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('modelli: «Preventivo vuoto» resta possibile', (await page.inputValue('[data-sez="0"] [data-voce="0"] [data-v="desc"]').catch(() => 'x')) === '');
+    await page.click('.ed-top [data-act="back"]');
+    await page.waitForTimeout(500);
+    await page.click('.head [data-act="new"]');
+    await page.waitForSelector('#nm').catch(() => {});
+    await page.click('#nm [data-act="mdDel"]').catch(() => {});
+    await page.click('#modal [data-close="ok"]').catch(() => {});
+    await page.waitForTimeout(400);
+    await page.click('.ed-top [data-act="back"]').catch(() => {});
+    await page.waitForTimeout(400);
+    await page.click('.head [data-act="new"]').catch(() => {});
+    await page.waitForTimeout(400);
+    check('modelli: eliminato, «Nuovo» apre subito un preventivo vuoto', !(await page.$('#nm')) && !!(await page.$('.ed-top')));
+    check('modelli: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

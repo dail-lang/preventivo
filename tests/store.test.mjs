@@ -87,6 +87,13 @@ test('idsWhere: id delle foto di un preventivo, anche senza averle aperte', asyn
   assert.deepEqual((await st.idsWhere('foto', 'preventivoId', 'p1')).sort(), ['f1', 'f3']);
 });
 
+test('modelli: nella copia di sicurezza', async () => {
+  const st = await createStore('memory', { seed: { modelli: [{ id: 'md1', nome: 'Bagno' }] } });
+  assert.equal(st.exportAll().modelli.length, 1);
+  const dst = await createStore('memory'); await importa(dst, st.exportAll());
+  assert.deepEqual(await dst.ids('modelli'), ['md1']);
+});
+
 test('rilievi delle misure: nella copia di sicurezza e nel trasferimento', async () => {
   const src = await createStore('memory', { seed: { misure: [{ id: 'm1', nome: 'Appartamento Rossi', stanze: [{ nome: 'Bagno', l: '2', p: '3', h: '2,7', aperture: [] }] }] } });
   const dati = src.exportAll();

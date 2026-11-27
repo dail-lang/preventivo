@@ -162,3 +162,23 @@ test('segnaRichiamato: data della telefonata e «modificato» aggiornato (gli al
   assert.equal(q.modificato, '2026-11-27T09:00:00.000Z');
   assert.equal(p.richiamato, undefined, 'non cambia l\'originale');
 });
+
+import { modelloDa, daModello } from '../js/calc.js';
+test('modelli: si salva il lavoro, non il cliente; il nuovo preventivo ha id nuovi', () => {
+  const p = { ...structuredClone(fx.acorpo), stato: 'accettato', firma: { png: 'x' }, rate: [{ id: 'r' }], cliente: { nome: 'Rossi' }, cantiere: 'Via Roma' };
+  p.sezioni[0].voci[0].costo = '3000'; p.sezioni[0].voci[0].misure = [{ l: 4 }];
+  const m = modelloDa(p, 'Bagno completo');
+  assert.equal(m.nome, 'Bagno completo');
+  assert.equal(m.cliente, undefined); assert.equal(m.firma, undefined); assert.equal(m.rate, undefined); assert.equal(m.stato, undefined);
+  assert.equal(m.sezioni[0].voci[0].costo, '3000');
+  assert.equal(m.sezioni[0].voci[0].misure, undefined, 'le misure sono della stanza di quel cliente');
+  let n = 0;
+  const base = { id: 'nuovo', anno: 2026, numero: 9, data: '2026-11-27', stato: 'bozza', cliente: { nome: '' }, cantiere: '', oggetto: '', sezioni: [], iva: 22 };
+  const q = daModello(m, base, () => 'id' + (++n));
+  assert.equal(q.id, 'nuovo'); assert.equal(q.numero, 9); assert.equal(q.stato, 'bozza'); assert.equal(q.cliente.nome, '');
+  assert.equal(q.oggetto, fx.acorpo.oggetto); assert.equal(q.iva, fx.acorpo.iva);
+  assert.equal(q.sezioni[0].voci[0].desc, fx.acorpo.sezioni[0].voci[0].desc);
+  assert.notEqual(q.sezioni[0].id, fx.acorpo.sezioni[0].id); assert.ok(q.sezioni[0].voci[0].id.startsWith('id'));
+  assert.equal(q.modello, undefined);
+  q.sezioni[0].voci[0].prezzo = '1'; assert.notEqual(m.sezioni[0].voci[0].prezzo, '1', 'il modello non cambia');
+});

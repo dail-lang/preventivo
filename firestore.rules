@@ -40,6 +40,8 @@ service cloud.firestore {
     match /foto/{id}       { allow read, write: if isAllowed(); }
     // Rilievi delle misure fatti in cantiere (anche fuori dal preventivo).
     match /misure/{id}     { allow read, write: if isAllowed(); }
+    // Modelli di preventivo (lavori tipo).
+    match /modelli/{id}    { allow read, write: if isAllowed(); }
 
     // Tutto il resto è chiuso.
   }

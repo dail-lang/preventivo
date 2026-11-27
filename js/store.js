@@ -9,7 +9,7 @@
 //   onSync(cb)                 cb({online, pending})
 export const FIREBASE_VERSION = '10.14.1';
 export const FB_URL = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/`;
-export const COLLEZIONI = ['preventivi', 'listino', 'clienti', 'foto', 'misure'];
+export const COLLEZIONI = ['preventivi', 'listino', 'clienti', 'foto', 'misure', 'modelli'];
 
 export async function createStore(kind, opts = {}) {
   if (kind === 'locale') return localStore();
@@ -200,7 +200,7 @@ function esporta(list) {
   const strip = r => { const { id, ...rest } = r; return { id, ...rest }; };
   return {
     formato: 'nazifoski-dati', esportato: new Date().toISOString(),
-    preventivi: list('preventivi').map(strip), listino: list('listino').map(strip), clienti: list('clienti').map(strip), foto: list('foto').map(strip), misure: list('misure').map(strip),
+    preventivi: list('preventivi').map(strip), listino: list('listino').map(strip), clienti: list('clienti').map(strip), foto: list('foto').map(strip), misure: list('misure').map(strip), modelli: list('modelli').map(strip),
     ...(az ? { azienda: (({ id, ...rest }) => rest)(az) } : {})
   };
 }

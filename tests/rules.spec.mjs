@@ -76,6 +76,11 @@ test('rilievi delle misure: autorizzati sì, estranei no', async () => {
   await assertFails(setDoc(doc(x, 'misure/m2'), { nome: 'x' }));
 });
 
+test('modelli: autorizzati sì, estranei no', async () => {
+  await assertSucceeds(setDoc(doc(ctx('m', 'moglie@example.com'), 'modelli/md1'), { nome: 'Bagno', sezioni: [] }));
+  await assertFails(getDoc(doc(ctx('x', 'sconosciuto@example.com'), 'modelli/md1')));
+});
+
 test('collezioni non previste: chiuse anche al titolare', async () => {
   const db = ctx('o', OWNER);
   await assertFails(setDoc(doc(db, 'altro/x'), { a: 1 }));

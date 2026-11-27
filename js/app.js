@@ -1,5 +1,5 @@
 // Nazifoski Preventivi: interfaccia. Dati su Firestore (o in memoria con ?test=1).
-import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf, rateDaTesto, ricalcolaRate, statoPagamenti, RATE_BASE, segnaRichiamato } from './calc.js';
+import { num, isExpr, calc, fmtEur, fmtNum, fmtDate, today, numStr, nextNumero, duplicati, round2, suggerisci, messaggioInvio, MESSAGGIO_BASE, daRichiamare, giorniDa, nuovaRevisione, ripristinaRevisione, calcMargine, qtaOf, rateDaTesto, ricalcolaRate, statoPagamenti, RATE_BASE, segnaRichiamato, modelloDa, daModello } from './calc.js';
 import { createStore, importa, localeHasData, FB_URL } from './store.js';
 import { createAuth, isIosStandalone, messaggioErrore } from './auth.js';
 import { righeDaPdf, leggiPreventivo, categoriaDa } from './pdfimport.js';
@@ -28,7 +28,7 @@ export const AZIENDA_BASE = {
 /* ---------- Stato ---------- */
 const S = {
   view: 'lista', user: null, persone: [], started: false,
-  loaded: { preventivi: false, listino: false, clienti: false, misure: false }, misure: [], rilievo: null, mq: '',
+  loaded: { preventivi: false, listino: false, clienti: false, misure: false, modelli: false }, misure: [], modelli: [], rilievo: null, mq: '',
   preventivi: [], listino: [], clienti: [], azienda: { ...AZIENDA_BASE },
   current: null, base: null, seen: false, gone: false, filter: 'tutti', q: '', lq: '', cq: '', sync: { online: true, pending: false }
 };
@@ -178,7 +178,7 @@ async function boot() {
     // Senza configurazione Firebase: dati «solo su questo telefono», senza accesso.
     const kind = TEST ? 'test' : app ? 'online' : 'locale';
     auth = await createAuth(kind === 'test' ? 'fake' : kind === 'online' ? 'firebase' : 'locale', { app, user: seed.user, emulator: EMU });
-    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, lento: seed.lento, errore: seed.errore, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto, misure: seed.misure } });
+    store = await createStore(kind === 'test' ? 'memory' : kind === 'online' ? 'firestore' : 'locale', { app, emulator: EMU, deny: !!seed.deny, lento: seed.lento, errore: seed.errore, seed: { preventivi: seed.preventivi, listino: seed.listino, clienti: seed.clienti, impostazioni: seed.impostazioni, foto: seed.foto, misure: seed.misure, modelli: seed.modelli } });
     store.onSync(s => { S.sync = s; renderSync(); });
     auth.onUser(onUser);
   } catch (e) {
@@ -243,7 +243,7 @@ function trasferimentoBanner() {
 
 function startCollections() {
   controllaLocale();
-  for (const name of ['preventivi', 'listino', 'clienti', 'misure']) {
+  for (const name of ['preventivi', 'listino', 'clienti', 'misure', 'modelli']) {
     unsubs.push(store.subscribe(name, list => {
       S[name] = list; S.loaded[name] = true;
       render(true);
@@ -469,6 +469,7 @@ function renderEditor() {
       <span class="savestate" id="saveState" aria-live="polite"></span>
       <div class="ed-actions">
         <button class="btn" type="button" data-act="dup">Duplica</button>
+        ${p.esempio ? '' : '<button class="btn" type="button" data-act="modello" title="Salva come modello per i prossimi preventivi">Salva modello</button>'}
         <button class="btn danger" type="button" data-act="del">Elimina</button>
         <button class="btn primary" type="button" data-act="preview">${IC.doc} Anteprima e PDF</button>
       </div>
@@ -756,7 +757,7 @@ async function onAct(b) {
   const act = b.dataset.act; const p = S.current;
   if (S.view === 'misure' && (await onActMisure(act, b))) return;
   if (S.view === 'editor' && p && p.firma && ATTI_CONTENUTO.includes(act)) { revisionePerModificare(); return; }
-  if (act === 'new') { const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
+  if (act === 'new') { if (S.modelli.length) return scegliModello(); const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
   if (act === 'lNew') return editListino(null);
   if (act === 'fiDisegna') {
     const { apriFirma, chiudiFirma } = await import('./firma.js');
@@ -814,6 +815,7 @@ async function onAct(b) {
       break;
     }
     case 'revisioni': flushEditor(); apriRevisioni(); break;
+    case 'modello': flushEditor(); salvaModello(p); break;
     case 'rStandard': {
       const testo = S.azienda.rateStandard || RATE_BASE;
       const nuove = rateDaTesto(testo, calc(p).totale);
@@ -1219,6 +1221,53 @@ function apriFoto(id) {
     if (!(await confirmBox('Eliminare questa foto?', 'La foto viene cancellata per tutti. Non si può annullare.', 'Elimina'))) return;
     write('foto', f.id, DEL); toast('Foto eliminata');
   };
+}
+
+/* ---------- Modelli di preventivo ---------- */
+function salvaModello(p) {
+  openModal(`<form class="sheet" id="md-form" role="dialog" aria-modal="true" aria-labelledby="md-t" style="width:min(460px,100%)">
+    <div class="sheet-h"><h2 id="md-t">Salva come modello</h2><button class="icon-btn" type="button" data-close="no" aria-label="Chiudi">${IC.x}</button></div>
+    <div class="sheet-b">
+      <label class="field"><span>Nome del modello</span><input class="in" id="md-nome" required autocapitalize="sentences" value="${esc(p.oggetto || '')}" placeholder="Es. Bagno completo"></label>
+      <p class="help" style="margin:0;font-size:13.5px;color:var(--stone)">Si salvano voci, prezzi, costi, IVA e testi. Il cliente, le firme e i pagamenti no. Lo ritrovi toccando «Nuovo preventivo».</p>
+    </div>
+    <div class="sheet-f"><button class="btn" type="button" data-close="no">Annulla</button><button class="btn primary" type="submit">Salva modello</button></div>
+  </form>`);
+  $('#md-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const nome = $('#md-nome').value.trim(); if (!nome) return;
+    const uguale = S.modelli.find(m => (m.nome || '').trim().toLowerCase() === nome.toLowerCase());
+    closeModal(true);
+    if (uguale && !(await confirmBox(`Sostituire il modello «${uguale.nome}»?`, 'C\'è già un modello con questo nome: viene aggiornato con questo preventivo.', 'Sostituisci'))) return;
+    write('modelli', uguale ? uguale.id : uid(), { ...modelloDa(p, nome), creato: (uguale && uguale.creato) || new Date().toISOString(), modificato: new Date().toISOString() });
+    toast(`Modello «${nome}» salvato`);
+  });
+}
+function scegliModello() {
+  const lista = S.modelli.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'it'));
+  openModal(`<div class="sheet" id="nm" role="dialog" aria-modal="true" aria-labelledby="nm-t">
+    <div class="sheet-h"><h2 id="nm-t">Nuovo preventivo</h2><button class="icon-btn" type="button" data-close="no" aria-label="Chiudi">${IC.x}</button></div>
+    <div class="sheet-b">
+      <button class="pick" type="button" data-act="nmVuoto"><span><b>Preventivo vuoto</b><small>Parti da zero</small></span><span class="p">${IC.plus}</span></button>
+      <div class="pick-cat">Dai tuoi modelli</div>
+      ${lista.map(m => { const nv = (m.sezioni || []).reduce((t, s) => t + (s.voci || []).length, 0); return `<div class="nm-row"><button class="pick" type="button" data-modello="${esc(m.id)}"><span><b>${esc(m.nome || 'Modello')}</b><small>${nv} ${nv === 1 ? 'voce' : 'voci'}${m.oggetto && m.oggetto !== m.nome ? ' · ' + esc(m.oggetto) : ''}</small></span><span class="p">${fmtEur(totaleDi(m))}</span></button><button class="icon-btn del" type="button" data-act="mdDel" data-id="${esc(m.id)}" aria-label="Elimina modello ${esc(m.nome || '')}">${IC.trash}</button></div>`; }).join('')}
+    </div></div>`);
+  $('#nm').addEventListener('click', async e => {
+    const b = e.target.closest('[data-act], [data-modello]'); if (!b) return;
+    if (b.dataset.act === 'nmVuoto') { closeModal(true); const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
+    if (b.dataset.modello) {
+      const m = S.modelli.find(x => x.id === b.dataset.modello); if (!m) return;
+      closeModal(true);
+      const np = daModello(m, nuovoPreventivo(), uid);
+      openEditor(np); saveCurrent(); toast(`Preventivo dal modello «${m.nome}»: aggiungi il cliente`);
+      return;
+    }
+    if (b.dataset.act === 'mdDel') {
+      const m = S.modelli.find(x => x.id === b.dataset.id); if (!m) return;
+      if (!(await confirmBox(`Eliminare il modello «${m.nome}»?`, 'I preventivi già fatti con questo modello restano come sono.', 'Elimina'))) return;
+      write('modelli', m.id, DEL); toast('Modello eliminato');
+    }
+  });
 }
 
 /* ---------- Pagamenti ---------- */

@@ -263,3 +263,20 @@ export function statoPagamenti(p, oggiIso) {
 export function segnaRichiamato(p, oggiIso, oraIso) {
   return { ...p, richiamato: oggiIso, modificato: oraIso };
 }
+
+/* Modelli di preventivo: il lavoro tipo, senza cliente, firme, pagamenti o storia. */
+const CAMPI_MODELLO = ['oggetto', 'sezioni', 'sconto', 'iva', 'dettaglio', 'tempi', 'pagamento', 'note'];
+export function modelloDa(p, nome) {
+  const m = { nome: String(nome || '').trim() };
+  for (const k of CAMPI_MODELLO) if (p[k] !== undefined) m[k] = JSON.parse(JSON.stringify(p[k]));
+  for (const s of m.sezioni || []) for (const v of s.voci || []) delete v.misure;
+  return m;
+}
+/** Nuovo preventivo (base: numero, data, cliente vuoto…) con il lavoro del modello; sezioni e voci con id nuovi. */
+export function daModello(m, base, nuovoId) {
+  const q = { ...base };
+  for (const k of CAMPI_MODELLO) if (m[k] !== undefined) q[k] = JSON.parse(JSON.stringify(m[k]));
+  for (const s of q.sezioni || []) { s.id = nuovoId(); for (const v of s.voci || []) v.id = nuovoId(); }
+  if (!q.sezioni || !q.sezioni.length) q.sezioni = base.sezioni;
+  return q;
+}
