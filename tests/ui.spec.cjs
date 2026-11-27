@@ -812,6 +812,29 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
     await ctx.close();
   }
 
+  // 2y. Modelli pronti (prezzi medi di Rimini)
+  {
+    const { page, ctx, errors } = await open(browser, 'Pixel 7', seedBase());
+    page.setDefaultTimeout(5000);
+    await page.waitForSelector('[data-open]');
+    await page.click('#main .head [data-act="modelli"]');
+    await page.waitForSelector('#nm');
+    await page.click('#nm [data-act="mdPronti"]').catch(() => {});
+    await page.waitForTimeout(500);
+    const nomi = await page.$$eval('#nm [data-modello] b', a => a.map(x => x.textContent)).catch(() => []);
+    check('modelli pronti: caricati', nomi.length >= 6 && nomi.some(n => /bagno/i.test(n)) && nomi.some(n => /tinteggiatura/i.test(n)), nomi.join(' / '));
+    await page.click('#nm [data-act="mdPronti"]').catch(() => {});
+    await page.waitForTimeout(500);
+    check('modelli pronti: ricaricarli non li duplica', (await page.$$('#nm [data-modello]')).length === nomi.length);
+    const bagno = await page.$$eval('#nm [data-modello]', a => (a.find(x => /bagno/i.test(x.textContent)) || {}).dataset?.modello).catch(() => null);
+    await page.click(`#nm [data-modello="${bagno}"]`).catch(() => {});
+    await page.waitForTimeout(500);
+    const tot = await page.textContent('#t-tot').catch(() => '');
+    check('modelli pronti: il bagno esce con voci e totale', (await page.$$('#sezioni .sez')).length >= 4 && !/€ 0,00/.test(tot), tot);
+    check('modelli pronti: nessun errore', errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+
   // 2f. Da richiamare
   {
     const s = seedBase();

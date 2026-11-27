@@ -1336,9 +1336,20 @@ function scegliModello() {
       <div class="pick-cat">Dai tuoi modelli</div>
       ${lista.length ? '' : `<div class="nm-vuoto"><b>Non hai ancora nessun modello.</b> Per crearne uno:<ol><li>apri un preventivo fatto bene, per esempio un bagno completo;</li><li>in alto tocca <b>«Salva modello»</b> e dagli un nome.</li></ol>Da quel momento lo trovi qui e ogni volta che tocchi «Nuovo preventivo»: escono le stesse voci e gli stessi prezzi, tu aggiungi solo il cliente.</div>`}
       ${lista.map(m => { const nv = (m.sezioni || []).reduce((t, s) => t + (s.voci || []).length, 0); return `<div class="nm-row"><button class="pick" type="button" data-modello="${esc(m.id)}"><span><b>${esc(m.nome || 'Modello')}</b><small>${nv} ${nv === 1 ? 'voce' : 'voci'}${m.oggetto && m.oggetto !== m.nome ? ' · ' + esc(m.oggetto) : ''}</small></span><span class="p">${fmtEur(totaleDi(m))}</span></button><button class="icon-btn del" type="button" data-act="mdDel" data-id="${esc(m.id)}" aria-label="Elimina modello ${esc(m.nome || '')}">${IC.trash}</button></div>`; }).join('')}
+      <button class="btn nm-pronti" type="button" data-act="mdPronti">${IC.plus} Carica modelli pronti (prezzi medi Rimini)</button>
     </div></div>`);
   $('#nm').addEventListener('click', async e => {
     const b = e.target.closest('[data-act], [data-modello]'); if (!b) return;
+    if (b.dataset.act === 'mdPronti') {
+      const { modelliPronti } = await import('./modelli-pronti.js');
+      const ci = new Set(S.modelli.map(m => (m.nome || '').trim().toLowerCase()));
+      const nuovi = modelliPronti(S.listino).filter(m => !ci.has(m.nome.toLowerCase()));
+      const ora = new Date().toISOString();
+      nuovi.forEach(m => write('modelli', uid(), { ...m, creato: ora, modificato: ora, pronto: true }));
+      toast(nuovi.length ? `Aggiunti ${nuovi.length} modelli pronti: quantità di un caso tipo, correggile con le misure vere` : 'I modelli pronti ci sono già');
+      setTimeout(scegliModello, 150);
+      return;
+    }
     if (b.dataset.act === 'nmVuoto') { closeModal(true); const np = nuovoPreventivo(); openEditor(np); saveCurrent(); return; }
     if (b.dataset.modello) {
       const m = S.modelli.find(x => x.id === b.dataset.modello); if (!m) return;
